@@ -10,8 +10,18 @@ object ScalaredditBuild extends Build {
       name := "scala-reddit",
       organization := "kuhn",
       version := "0.1-SNAPSHOT",
-      scalaVersion := "2.9.2"
-      // add other settings here
+      scalaVersion := "2.9.2",
+      resolvers := Seq(
+        "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",
+        "spray repo" at "http://repo.spray.io"
+      ),
+      libraryDependencies := Seq(
+        "com.typesafe.akka" % "akka-actor" % "2.0.5",
+        "io.spray" % "spray-client" % "1.0-M7",
+        "io.spray" %%  "spray-json" % "1.2.3" cross CrossVersion.full,
+        "org.scalatest" %% "scalatest" % "1.8" % "test"
+      ),
+      initialCommands in console := "import kuhn._;import Console._;"
     )
   )
 }

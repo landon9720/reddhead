@@ -27,7 +27,7 @@ object Console extends App {
 
 
 	val pipeline = sendReceive(conduit)
-	val result = pipeline(Get("/top/.json?limit=2"))
+	val result = pipeline(Get("/top/.json?limit=10"))
 
 	val r = Await.result(result, 10 seconds)
 
@@ -35,83 +35,73 @@ object Console extends App {
 
 
 	object RedditJsonProtocol extends DefaultJsonProtocol {
-
-		implicit object LinkJsonFormat extends RootJsonFormat[Link] {
-			def write(obj:Link) = null
-
-			def read(json:JsValue) = new Link(
-				id = json.asJsObject.fields.get("before").collect { case JsString(x) => x } getOrElse(""),
-		        name = json.asJsObject.fields.get("name").collect { case JsString(x) => x } getOrElse(""),
-				kind = json.asJsObject.fields.get("kind").collect { case JsString(x) => x } getOrElse(""),
-				data = "",
-				ups = json.asJsObject.fields.get("ups").collect { case JsNumber(x) => x.toInt } getOrElse("0"),
-				downs = json.asJsObject.fields.get("downs").collect { case JsNumber(x) => x.toInt } getOrElse("0"),
-
-			val ups:Int,
-			val downs:Int,
-			val likes:Option[Boolean],
-			val created:Long,
-			val created_utc:Long,
-			val author:String,
-			val author_flair_css_class:String,
-			val author_flair_text:String,
-			val clicked:Boolean,
-			val domain:String,
-			val hidden:Boolean,
-			val is_self:Boolean,
-			//	media:Any,
-			//	media_embed:Any,
-			val num_comments:Int,
-			val over_18:Boolean,
-			val permalink:String,
-			val saved:Boolean,
-			val score:Int,
-			val selftext:String,
-			val selftext_html:String,
-			val subreddit:String,
-			val subreddit_id:String,
-			val thumbnail:String,
-			val title:String,
-			val url:String,
-			val edited:Long
-			)
-		}
-
-		implicit object ListingJsonFormat extends RootJsonFormat[Listing] {
-			def write(l:Listing) = JsObject(
-				"before" -> JsString(l.before),
-				"after" -> JsString(l.after),
-				"modhash" -> JsString(l.modhash)
-//				"data" -> JsObject(l.data)
-			)
-
-			def read(value: JsValue) = new Listing(
-				before = value.asJsObject.fields.get("before").map(_.toString).getOrElse(""),
-				after = value.asJsObject.fields.get("after").map(_.toString).getOrElse(""),
-				modhash = value.asJsObject.fields.get("modhash").map(_.toString).getOrElse(""),
-				data = for {
-					child <- json.asJsObject.fields("data").asJsObject.fields("children").asInstanceOf[JsArray].elements
-				} yield child.convertTo[Link]
-			)
-
-//				value.asJsObject.getFields("kind", "before", "after", "modhash") match {
-//				case Seq(JsString(before), JsString(after), JsString(modhash)) =>
-//					new Listing[Unit](before, after, modhash, List())
-//				case x => println(x.toString); sys.error("foo")
-//			}
-		}
-
-
+		implicit def thingFormat[A :JsonFormat] = jsonFormat2(Thing.apply[A])
+		implicit def listingFormat[A :JsonFormat] = jsonFormat3(Listing.apply[A])
+		implicit val linkFormat = jsonFormat15(Link.apply)
 	}
 
 	import RedditJsonProtocol._
 
-	val listing = json.asJsObject.fields("data").asJsObject.fields("children") match {
-		case values:JsArray => for (v <- values.elements) {
-			println(v.prettyPrint)
-		}
+	case class Thing[T](
+		val kind:String,
+		val data:T
+	) {
+//		override def toString = "thing " + kind + ": " + data match {
+//			case js:JsValue => js.prettyPrint
+//			case x => x.toString
+//		}
 	}
-//	println(listing)
+
+	case class Listing[T](
+		val children:List[Thing[T]],
+		val before:Option[String],
+		val after:Option[String]
+	)
+
+	case class Link(
+		id:String,
+		name:String,
+		//	val kind:String,
+		//	val data:Any,
+		ups:Int,
+		downs:Int,
+		//	val likes:Option[Boolean],
+		//	val created:Long,
+		created_utc:Long,
+		author:String,
+		//	val author_flair_css_class:String,
+		//	val author_flair_text:String,
+		//	val clicked:Boolean,
+		domain:String,
+		//	val hidden:Boolean,
+		is_self:Boolean,
+		////	media:Any,
+		////	media_embed:Any,
+		num_comments:Int,
+		over_18:Boolean,
+		permalink:String,
+		//	val saved:Boolean,
+//		score:Int,
+		selftext:String,
+		//			val selftext_html:String,
+		subreddit:String,
+		//			val subreddit_id:String,
+		//	val thumbnail:String,
+		title:String,
+		url:String
+		//	val edited:Long
+	)
+
+	val thing = json.convertTo[Thing[Listing[Link]]]
+
+	for (x <- thing.data.children) {
+		println("title: %s url: %s ups: %d downs: %d".format(x.data.title, x.data.url, x.data.ups, x.data.downs))
+	}
+
+//	println(thing)
+//
+//	println("raw:::")
+//	println(json.prettyPrint)
 
 
 //

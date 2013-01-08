@@ -3,10 +3,10 @@ package kuhn
 import spray.can.client.HttpClient
 import spray.io._
 
-import akka.actor.{Props, ActorSystem}
+import akka.actor.{TypedActor, Props, ActorSystem}
 import spray.client.HttpConduit
 import HttpConduit._
-import akka.dispatch.Await
+import akka.dispatch.{Promise, Future, Await}
 
 import akka.util.duration._
 
@@ -52,7 +52,7 @@ object Thing {
 object Listings {
 	def apply(json:JsonNode):List[Listing] = {
 		import collection.JavaConversions._
-		(for (listing <- json.getElements) yield new Listing(listing)).toList
+		(for (listing <- json) yield new Listing(listing)).toList
 	}
 }
 
@@ -138,19 +138,32 @@ object Console extends App {
 
 	val pipeline = sendReceive(conduit)
 
-	val jsonString = Await.result(pipeline(Get("/top/.json?limit=20")), 10 seconds).entity.asString
-	val json = mapper.readTree(jsonString)
-	val listing = new Listing(jsonString.toJson)
-	println(listing)
+	case class Query(path:String, before:Option[String] = None, after:Option[String] = None, limit:Int = 10, sort:Option[String] = None) {
+		def previous(listing:Listing):Query = copy(before = Some(listing.before.get), after = None)
+		def next(listing:Listing):Query = copy(before = None, after = Some(listing.after.get))
+	}
 
-	def next(listing:Listing):Option[Listing] = {
-		for (after <- listing.after) yield {
-			new Listing(Await.result(pipeline(Get("/top/.json?limit=20&after=" + after)), 10 seconds).entity.asString.toJson)
+	def links(q:Query):Future[Listing] = {
+		val url = "/%s.json?limit=%d&".format(q.path, q.limit) +
+			q.before.map("before=%s&".format(_)).getOrElse("") +
+			q.after.map("after=%s&".format(_)).getOrElse("")
+			q.sort.map("sort=%s&".format(_)).getOrElse("")
+		println("URL: " + url)
+		for (httpResponse <- pipeline(Get(url))) yield new Listing(httpResponse.entity.asString.toJson)
+	}
+
+	val q = Query("top")
+
+	for (listing <- links(q)) {
+		println("page 1")
+		println(listing.toString)
+		for (listing <- links(q.next(listing))) {
+			println("page 2")
+			println(listing.toString)
 		}
 	}
-	println("NEXT!!")
-	println(next(listing))
 
-	Thread.sleep(3000)
+	println("SLEEP...")
+	Thread.sleep(5000)
 	system.shutdown
 }

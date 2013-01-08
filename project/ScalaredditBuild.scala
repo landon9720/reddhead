@@ -18,7 +18,8 @@ object ScalaredditBuild extends Build {
       libraryDependencies := Seq(
         "com.typesafe.akka" % "akka-actor" % "2.0.5",
         "io.spray" % "spray-client" % "1.0-M7",
-        "io.spray" %%  "spray-json" % "1.2.3" cross CrossVersion.full,
+//        "io.spray" %%  "spray-json" % "1.2.3" cross CrossVersion.full,
+        "com.fasterxml" % "jackson-module-scala" % "1.9.3",
         "org.scalatest" %% "scalatest" % "1.8" % "test"
       ),
       initialCommands in console := "import kuhn._;import Console._;"

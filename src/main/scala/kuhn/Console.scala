@@ -67,7 +67,9 @@ class Listing(json:JsonNode) extends Thing {
 	import collection.JavaConversions._
 	val things = for (thing <- json.path("data").path("children")) yield Thing(thing)
 
-	override def toString = "listing (before=%s after=%s):\n".format(before.getOrElse("0"), after.getOrElse("0")) + things.mkString("\n").tab
+	override def toString =
+		"listing (before=%s after=%s):\n".format(before.getOrElse("0"), after.getOrElse("0")) +
+		things.mkString("\n").tab
 }
 
 class More(json:JsonNode) extends Thing {
@@ -88,9 +90,16 @@ class Comment(json:JsonNode) extends Thing {
 	val kind = "t1"
 	val id = json.path("id").asText
 	val name = json.path("name").asText
+	val author = json.path("author").asText
 	val body = json.path("body").asText
 	val link_id = json.path("link_id").asText
+	val parent_id = json.path("parent_id").asText
+	val subreddit = json.path("subreddit").asText
 	val replies = new Listing(json.path("replies"))
+	val ups = json.path("ups").asInt
+	val downs = json.path("downs").asInt
+	val created = json.path("created").asLong
+	val created_utc = json.path("created_utc").asLong
 
 	override def toString = "comment: %s\n%s".format(body, replies.toString.tab)
 }
@@ -99,10 +108,22 @@ class Link(json:JsonNode) extends Thing {
 	val kind = "t3"
 	val id = json.path("id").asText
 	val name = json.path("name").asText
-	val url = json.path("url").asText
+	val author = json.path("author").asText
+	val domain = json.path("domain").asText
+	val is_self = json.path("is_self").asBoolean
+	val num_comments = json.path("num_comments").asInt
+	val over_18 = json.path("over_18").asBoolean
+	val permalink = json.path("permalink").asText
+	val score = json.path("score").asInt
+	val selftext = json.path("selftext").asText
+	val subreddit = json.path("subreddit").asText
+	val thumbnail = json.path("thumbnail").asText
 	val title = json.path("title").asText
+	val url = json.path("url").asText
 	val ups = json.path("ups").asInt
 	val downs = json.path("downs").asInt
+	val created = json.path("created").asLong
+	val created_utc = json.path("created_utc").asLong
 	override def toString = "link: %s \"%s\" +%d -%d [%s]".format(url, title, ups, downs, name)
 }
 

@@ -3,26 +3,28 @@ package kuhn
 import spray.can.client.HttpClient
 import spray.io._
 
-import akka.actor.{TypedActor, Props, ActorSystem}
+import akka.actor.{Props, ActorSystem}
 import spray.client.HttpConduit
 import HttpConduit._
-import akka.dispatch.{Promise, Future, Await}
 
-import akka.util.duration._
+import scala.concurrent.duration._
 
 import org.codehaus.jackson.map.ObjectMapper
 import org.codehaus.jackson.JsonNode
+import concurrent.Future
+import akka.contrib.throttle.TimerBasedThrottler
+import akka.contrib.throttle.Throttler.{SetTarget, Rate}
 
 object MiscellaneousUtilities {
 
 	val mapper = new ObjectMapper // is this thing threadsafe?
 
-	implicit def rich_string(s:String) = new {
+	implicit class rich_string(s:String) {
 		def tab = s.split("\n").mkString("  ", "\n  ", "")
 		def toJson = mapper.readTree(s)
 	}
 
-	implicit def rich_json(j:JsonNode) = new {
+	implicit class rich_json(j:JsonNode) {
 		def pretty = mapper.writerWithDefaultPrettyPrinter.writeValueAsString(j)
 	}
 
@@ -134,7 +136,11 @@ object Console extends App {
 	implicit val system = ActorSystem()
 	val ioBridge = IOExtension(system).ioBridge()
 	val httpClient = system.actorOf(Props(new HttpClient(ioBridge)))
-	val conduit = system.actorOf(Props(new HttpConduit(httpClient, "www.reddit.com", 80)))
+
+	val throttler = system.actorOf(Props(new TimerBasedThrottler(Rate(30, 1 minute))))
+	throttler ! SetTarget(Some(httpClient))
+
+	val conduit = system.actorOf(Props(new HttpConduit(throttler, "www.reddit.com", 80)))
 
 	val pipeline = sendReceive(conduit)
 
@@ -152,7 +158,7 @@ object Console extends App {
 		for (httpResponse <- pipeline(Get(url))) yield new Listing(httpResponse.entity.asString.toJson)
 	}
 
-	val q = Query("top")
+	val q = Query("r/pics/controversial")
 
 	for (listing <- links(q)) {
 		println("page 1")

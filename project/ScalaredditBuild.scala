@@ -18,12 +18,18 @@ object ScalaredditBuild extends Build {
       libraryDependencies := Seq(
         "com.typesafe.akka" %% "akka-actor" % "2.1.0",
         "com.typesafe.akka" %% "akka-contrib" % "2.1.0",
+	    "com.typesafe.akka" %% "akka-dataflow" % "2.1.0",
         "io.spray" % "spray-client" % "1.1-M7",
 //        "io.spray" %%  "spray-json" % "1.2.3" cross CrossVersion.full,
         "com.fasterxml" % "jackson-module-scala" % "1.9.3"
 //        "org.scalatest" %% "scalatest" % "1.8" % "test"
       ),
-      initialCommands in console := "import kuhn._;import Console._;"
+      initialCommands in console := "import kuhn._;import Console._;",
+      autoCompilerPlugins := true,
+      libraryDependencies <+= scalaVersion {
+	    v => compilerPlugin("org.scala-lang.plugins" % "continuations" % "2.10.0")
+      },
+      scalacOptions += "-P:continuations:enable"
     )
   )
 }

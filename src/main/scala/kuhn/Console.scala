@@ -3,7 +3,7 @@ package kuhn
 import spray.can.client.HttpClient
 import spray.io._
 
-import akka.actor.{Props, ActorSystem}
+import akka.actor.{ActorLogging, Actor, Props, ActorSystem}
 import spray.client.HttpConduit
 import HttpConduit._
 
@@ -14,6 +14,8 @@ import org.codehaus.jackson.JsonNode
 import concurrent.Future
 import akka.contrib.throttle.TimerBasedThrottler
 import akka.contrib.throttle.Throttler.{SetTarget, Rate}
+import sys.process.Process
+import akka.event.Logging
 
 object MiscellaneousUtilities {
 
@@ -134,6 +136,8 @@ class Link(json:JsonNode) extends Thing {
 object Console extends App {
 
 	implicit val system = ActorSystem()
+	import system.dispatcher
+
 	val ioBridge = IOExtension(system).ioBridge()
 	val httpClient = system.actorOf(Props(new HttpClient(ioBridge)))
 
@@ -145,31 +149,45 @@ object Console extends App {
 	val pipeline = sendReceive(conduit)
 
 	case class Query(path:String, before:Option[String] = None, after:Option[String] = None, limit:Int = 10, sort:Option[String] = None) {
-		def previous(listing:Listing):Query = copy(before = Some(listing.before.get), after = None)
-		def next(listing:Listing):Query = copy(before = None, after = Some(listing.after.get))
+		def previous(listing:Listing):Option[Query] =
+			for (before <- listing.before) yield copy(before = listing.before, after = None)
+		def next(listing:Listing):Option[Query] =
+			for (after <- listing.after) yield copy(before = None, after = listing.after)
+		val url:String = "/%s.json?limit=%d&".format(path, limit) +
+			before.map("before=%s&".format(_)).getOrElse("") +
+			after.map("after=%s&".format(_)).getOrElse("")
+			sort.map("sort=%s&".format(_)).getOrElse("")
 	}
 
-	def links(q:Query):Future[Listing] = {
-		val url = "/%s.json?limit=%d&".format(q.path, q.limit) +
-			q.before.map("before=%s&".format(_)).getOrElse("") +
-			q.after.map("after=%s&".format(_)).getOrElse("")
-			q.sort.map("sort=%s&".format(_)).getOrElse("")
-		println("URL: " + url)
-		for (httpResponse <- pipeline(Get(url))) yield new Listing(httpResponse.entity.asString.toJson)
-	}
-
-	val q = Query("r/pics/controversial")
-
-	for (listing <- links(q)) {
-		println("page 1")
-		println(listing.toString)
-		for (listing <- links(q.next(listing))) {
-			println("page 2")
-			println(listing.toString)
+	def scroll[T <: Thing](q:Query, pages:Int)(f:T=>Unit) {
+		for (httpResponse <- pipeline(Get(q.url))) {
+			var listing = new Listing(httpResponse.entity.asString.toJson)
+			listing.things.collect { case t:T => t } foreach f
+			for (_ <- 0 until pages - 1) {
+				for {
+					next <- q.next(listing)
+					httpResponse <- pipeline(Get(next.url))
+				} {
+					listing = new Listing(httpResponse.entity.asString.toJson)
+					listing.things.collect { case t:T => t } foreach f
+				}
+			}
 		}
 	}
 
+	scroll(Query("r/pics/controversial", limit = 100), 10) { link:Link =>
+		println(link)
+		system.actorOf(Props(new Actor with ActorLogging {
+			def receive = {
+				case cmd:String => {
+					log.info(cmd)
+					Process(cmd).run
+				}
+			}
+		})) ! "wget -o /tmp/wget.log -P /tmp %s".format(link.url)
+	}
+
 	println("SLEEP...")
-	Thread.sleep(5000)
+	Thread.sleep(30000)
 	system.shutdown
 }

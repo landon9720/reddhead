@@ -12,4 +12,6 @@ package object kuhn {
 	implicit class rich_json(j:JsonNode) {
 		def pretty = mapper.writerWithDefaultPrettyPrinter.writeValueAsString(j)
 	}
+
+	implicit def thing_to_thing_id(t:Thing):String = t.id
 }

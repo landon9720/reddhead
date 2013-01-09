@@ -4,7 +4,6 @@ import akka.actor.{Props, ActorSystem}
 import spray.can.client.HttpClient
 import spray.client.HttpConduit
 import akka.contrib.throttle.TimerBasedThrottler
-import akka.contrib.throttle.Throttler.{SetTarget, Rate}
 import spray.client.HttpConduit._
 import akka.contrib.throttle.Throttler.SetTarget
 import akka.contrib.throttle.Throttler.Rate
@@ -13,9 +12,11 @@ import spray.io.IOExtension
 import concurrent.duration._
 
 object system {
+
 	implicit val system = ActorSystem()
 
 	val ioBridge = IOExtension(system).ioBridge()
+
 	val httpClient = system.actorOf(Props(new HttpClient(ioBridge)))
 
 	val conduit = system.actorOf(Props(new HttpConduit(httpClient, "www.reddit.com", 80)))
@@ -24,4 +25,5 @@ object system {
 	throttler ! SetTarget(Some(conduit))
 
 	val pipeline = sendReceive(throttler)
+
 }

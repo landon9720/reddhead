@@ -16,6 +16,18 @@ object Console extends App {
 //		case c:Comment => println("comment: " + c)
 //	}
 
+	// monitor the front page for new posts
+//	monitor_links(frontpage) {
+//		case l => println(l)
+//	}
+
+	// monitor the top post for new comments
+//	first_link(frontpage) {
+//		case l: Link => monitor_comments(l) {
+//			case (_, c) => println(c)
+//		}
+//	}
+
 	// concurrently read 2 feeds
 //	links(frontpage_top) {
 //		case t => println("top: " + t)
@@ -42,6 +54,6 @@ object Console extends App {
 //	}
 
 	println("SLEEP...")
-	Thread.sleep(30000)
+	Thread.sleep(120000)
 	shutdown
 }

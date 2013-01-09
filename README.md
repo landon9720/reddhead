@@ -37,6 +37,31 @@ scroll(user("masta")) {
 }
 ```
 
+(This user is a mod on /r/pics, so I assume he has a lively feed.)
+
+### monitor the front page for new posts
+
+``` scala
+	// 
+	monitor_links(frontpage) {
+		case l => println(l)
+	}
+```
+
+Realtime monitoring of new links.
+
+### monitor the top post for new comments
+
+```
+first_link(frontpage) {
+	case l: Link => monitor_comments(l) {
+		case (_, c) => println(c)
+	}
+}
+```
+
+Realtime monitoring of comments.
+
 ### concurrently read 2 feeds ###
 
 ``` scala
@@ -76,14 +101,6 @@ comments("16716l") {
 ```
 
 `ancestors` contains this comment's parent comment, listing back to the root comment. Here I am using its `size` to format the output.
-
-### monitor new stream
-
-Realtime monitoring of new links (or other things).
-
-``` scala
-// register a function callback to be notified of new posts to /r/pics
-```
 
 ### build social graph
 

@@ -81,6 +81,11 @@ Build a social graph representing the connections of Reddit users. Determine con
 // illistrated in a few lines of code
 ```
 
+## TODO
+
+* authenticated write requests (voting, link submission, commenting, etc.)
+* traversal into `more` comments
+
 ## references
 
 * https://github.com/reddit/reddit/blob/master/r2/r2/controllers/api.py

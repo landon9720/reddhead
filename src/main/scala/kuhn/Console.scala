@@ -1,14 +1,12 @@
 package kuhn
 
-import api._
-
 object Console extends App {
 
+	import api._
 
-	// iterate front page links
-	links(Query("/")) { l:Link =>
-		println("""<img href="%s"/>""".format(l.url))
-		true
+	// read front page images
+	links(frontpage) {
+		case l:Link if l.domain == "i.imgur.com" => println("""<img href="%s"/>""".format(l.url))
 	}
 
 //	// concurrently read 2 different feeds
@@ -40,5 +38,5 @@ object Console extends App {
 
 	println("SLEEP...")
 	Thread.sleep(30000)
-	api.shutdown
+	shutdown
 }

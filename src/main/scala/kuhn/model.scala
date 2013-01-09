@@ -2,6 +2,10 @@ package kuhn
 
 import org.codehaus.jackson.JsonNode
 
+// this implementation is based on the documentation:
+// https://github.com/reddit/reddit/wiki/JSON
+// and reverse engineering Reddit's live web service
+
 trait Thing {
 	val kind:String
 	val id:String
@@ -28,7 +32,7 @@ object Listings {
 	}
 }
 
-class Listing(val json:JsonNode) extends Thing {
+class Listing(val json:JsonNode) extends Thing with Iterable[Thing] {
 
 	val kind = "Listing"
 	val id = "none"
@@ -38,10 +42,10 @@ class Listing(val json:JsonNode) extends Thing {
 
 	import collection.JavaConversions._
 	val things = for (thing <- json.path("data").path("children")) yield Thing(thing)
+	def iterator = things.iterator
 
 	override def toString =
-		"listing (before=%s after=%s):\n".format(before.getOrElse("0"), after.getOrElse("0")) +
-			things.mkString("\n").tab
+		"listing (before=%s after=%s):\n".format(before.getOrElse("null"), after.getOrElse("null"))
 }
 
 class More(val json:JsonNode) extends Thing {
@@ -73,7 +77,7 @@ class Comment(val json:JsonNode) extends Thing {
 	val created = json.path("created").asLong
 	val created_utc = json.path("created_utc").asLong
 
-	override def toString = "comment: %s\n%s".format(body, replies.toString.tab)
+	override def toString = body.split("\n").head
 }
 
 class Link(val json:JsonNode) extends Thing {
@@ -97,5 +101,5 @@ class Link(val json:JsonNode) extends Thing {
 	val created = json.path("created").asLong
 	val created_utc = json.path("created_utc").asLong
 
-	override def toString = "link: %s \"%s\" +%d -%d [%s]".format(url, title, ups, downs, name)
+	override def toString = url
 }

@@ -5,7 +5,6 @@ package object kuhn {
 	val mapper = new ObjectMapper
 
 	implicit class rich_string(s:String) {
-		def tab = s.split("\n").mkString("  ", "\n  ", "")
 		def toJson = mapper.readTree(s)
 		def optional = Option(s)
 	}

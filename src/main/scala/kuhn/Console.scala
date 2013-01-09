@@ -10,6 +10,12 @@ object Console extends App {
 //		case link if link.domain == "i.imgur.com" => println("""<img href="%s"/>""".format(link))
 //	}
 
+	// print all submissions and comments by user "masta"
+//	scroll(user("masta")) {
+//		case l:Link => println("link: %s".format(l))
+//		case c:Comment => println("comment: " + c)
+//	}
+
 	// concurrently read 2 feeds
 //	links(frontpage_top) {
 //		case t => println("top: " + t)

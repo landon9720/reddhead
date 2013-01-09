@@ -23,12 +23,14 @@ object api {
 	def subreddit_controversial(r:String) = Query("r/%s/controversial".format(r))
 	def subreddit_top(r:String) = Query("r/%s/top".format(r))
 
+	def user(u:String) = Query("user/%s".format(u))
+
 	case class Query(path:String, before:Option[String] = None, after:Option[String] = None) {
 		def previous(listing:Listing):Option[Query] =
 			for (before <- listing.before) yield copy(before = listing.before, after = None)
 		def next(listing:Listing):Option[Query] =
 			for (after <- listing.after) yield copy(before = None, after = listing.after)
-		val url:String = "/%s.json?".format(path) +
+		val url = "/%s.json?".format(path) +
 			before.map("before=%s&".format(_)).getOrElse("") +
 			after.map("after=%s&".format(_)).getOrElse("")
 	}
@@ -51,16 +53,17 @@ object api {
 		}
 	}
 
-	def comments(linkId:String)(f:PartialFunction[(Seq[Comment], Comment), Unit]) {
-		def impl(c:Comment, ancestors:Seq[Comment] = Seq()) {
-			if (f.isDefinedAt((ancestors, c))) f((ancestors, c))
-			c.replies.foreach {
-				case child:Comment => impl(child, c +: ancestors)
-				case _:More =>
-			}
+	def comments(c:Comment, ancestors:Seq[Comment] = Seq())(f:PartialFunction[(Seq[Comment], Comment), Unit]) {
+		if (f.isDefinedAt((ancestors, c))) f((ancestors, c))
+		c.replies.foreach {
+			case child:Comment => comments(child, c +: ancestors)(f)
+			case _:More =>
 		}
+	}
+
+	def comments(linkId:String)(f:PartialFunction[(Seq[Comment], Comment), Unit]) {
 		scroll(Query("comments/%s".format(linkId)), j => new Listing(j.get(1))) {
-			case c:Comment => impl(c)
+			case c:Comment => comments(c)(f)
 			case _:More =>
 		}
 	}

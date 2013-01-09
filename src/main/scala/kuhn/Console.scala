@@ -3,7 +3,7 @@ package kuhn
 import spray.can.client.HttpClient
 import spray.io._
 
-import akka.actor.{ActorLogging, Actor, Props, ActorSystem}
+import akka.actor.{Actor, Props, ActorSystem}
 import spray.client.HttpConduit
 import HttpConduit._
 
@@ -11,19 +11,17 @@ import scala.concurrent.duration._
 
 import org.codehaus.jackson.map.ObjectMapper
 import org.codehaus.jackson.JsonNode
-import concurrent.Future
 import akka.contrib.throttle.TimerBasedThrottler
-import akka.contrib.throttle.Throttler.{SetTarget, Rate}
-import sys.process.Process
-import akka.event.Logging
+import akka.contrib.throttle.Throttler.{SetRate, SetTarget, Rate}
 
 object MiscellaneousUtilities {
 
-	val mapper = new ObjectMapper // is this thing threadsafe?
+	val mapper = new ObjectMapper
 
 	implicit class rich_string(s:String) {
 		def tab = s.split("\n").mkString("  ", "\n  ", "")
 		def toJson = mapper.readTree(s)
+		def optional = Option(s)
 	}
 
 	implicit class rich_json(j:JsonNode) {
@@ -39,6 +37,7 @@ trait Thing {
 	val kind:String
 	val id:String
 	val name:String
+	val json:JsonNode
 }
 
 object Thing {
@@ -60,13 +59,13 @@ object Listings {
 	}
 }
 
-class Listing(json:JsonNode) extends Thing {
+class Listing(val json:JsonNode) extends Thing {
 
 	val kind = "Listing"
 	val id = "none"
 	val name = "none"
-	val before = Option(json.path("data").path("before").asText)
-	val after = Option(json.path("data").path("after").asText)
+	val before = json.path("data").path("before").getTextValue.optional
+	val after = json.path("data").path("after").getTextValue.optional
 
 	import collection.JavaConversions._
 	val things = for (thing <- json.path("data").path("children")) yield Thing(thing)
@@ -76,7 +75,7 @@ class Listing(json:JsonNode) extends Thing {
 		things.mkString("\n").tab
 }
 
-class More(json:JsonNode) extends Thing {
+class More(val json:JsonNode) extends Thing {
 
 	val kind = "more"
 	val id = json.path("id").asText
@@ -90,7 +89,7 @@ class More(json:JsonNode) extends Thing {
 	override def toString = "more: (%s) %s".format(count, children.take(10).mkString(","))
 }
 
-class Comment(json:JsonNode) extends Thing {
+class Comment(val json:JsonNode) extends Thing {
 	val kind = "t1"
 	val id = json.path("id").asText
 	val name = json.path("name").asText
@@ -108,7 +107,7 @@ class Comment(json:JsonNode) extends Thing {
 	override def toString = "comment: %s\n%s".format(body, replies.toString.tab)
 }
 
-class Link(json:JsonNode) extends Thing {
+class Link(val json:JsonNode) extends Thing {
 	val kind = "t3"
 	val id = json.path("id").asText
 	val name = json.path("name").asText
@@ -128,6 +127,7 @@ class Link(json:JsonNode) extends Thing {
 	val downs = json.path("downs").asInt
 	val created = json.path("created").asLong
 	val created_utc = json.path("created_utc").asLong
+
 	override def toString = "link: %s \"%s\" +%d -%d [%s]".format(url, title, ups, downs, name)
 }
 
@@ -141,25 +141,44 @@ object Console extends App {
 	val ioBridge = IOExtension(system).ioBridge()
 	val httpClient = system.actorOf(Props(new HttpClient(ioBridge)))
 
-	val throttler = system.actorOf(Props(new TimerBasedThrottler(Rate(30, 1 minute))))
-	throttler ! SetTarget(Some(httpClient))
+	val conduit = system.actorOf(Props(new HttpConduit(httpClient, "www.reddit.com", 80)))
 
-	val conduit = system.actorOf(Props(new HttpConduit(throttler, "www.reddit.com", 80)))
+	val throttler = system.actorOf(Props(new TimerBasedThrottler(Rate(1, 3 seconds))))
+	throttler ! SetRate(Rate(10, 1 minute))
+	throttler ! SetTarget(Some(conduit))
 
-	val pipeline = sendReceive(conduit)
+	val pipeline = sendReceive(throttler)
 
-	case class Query(path:String, before:Option[String] = None, after:Option[String] = None, limit:Int = 10, sort:Option[String] = None) {
+	case class Subreddit(r:String) {
+		val hot = Query("r/%s".format(r))
+		val `new` = Query("r/%s/new".format(r))
+		val controversial = Query("r/%s/controversial".format(r))
+		def top(t:String) = Query("r/%s/top".format(r)).copy(t = Some(t))
+		// hour, day, week, month, year, all
+		// confidence, top, new, hot, controversial, old, random
+	}
+
+	case class Query(
+        path:String,
+        before:Option[String] = None,
+        after:Option[String] = None,
+        limit:Int = 2,
+        sort:Option[String] = None,
+        t:Option[String] = None
+	) {
 		def previous(listing:Listing):Option[Query] =
 			for (before <- listing.before) yield copy(before = listing.before, after = None)
 		def next(listing:Listing):Option[Query] =
 			for (after <- listing.after) yield copy(before = None, after = listing.after)
-		val url:String = "/%s.json?limit=%d&".format(path, limit) +
+		val url:String = "/%s.json?".format(path) +
+//			"limit=%d&".format(limit) +
 			before.map("before=%s&".format(_)).getOrElse("") +
-			after.map("after=%s&".format(_)).getOrElse("")
-			sort.map("sort=%s&".format(_)).getOrElse("")
+			after.map("after=%s&".format(_)).getOrElse("") +
+			sort.map("sort=%s&".format(_)).getOrElse("") +
+			t.map("t=%s&".format(_)).getOrElse("")
 	}
 
-	def scroll[T <: Thing](q:Query, pages:Int)(f:T=>Unit) {
+	def scroll[T <: Thing](q:Query, pages:Int = 2)(f:T=>Unit) {
 		for (httpResponse <- pipeline(Get(q.url))) {
 			var listing = new Listing(httpResponse.entity.asString.toJson)
 			listing.things.collect { case t:T => t } foreach f
@@ -175,19 +194,80 @@ object Console extends App {
 		}
 	}
 
-	scroll(Query("r/pics/controversial", limit = 100), 10) { link:Link =>
-		println(link)
-		system.actorOf(Props(new Actor with ActorLogging {
-			def receive = {
-				case cmd:String => {
-					log.info(cmd)
-					Process(cmd).run
+	def traverse(linkId:String, t:Option[String] = None)(f:(Seq[Comment], Comment)=>Boolean) {
+		def scroll(f:Comment=>Unit) {
+			val q = Query("comments/%s".format(linkId), t = t)
+			for (httpResponse <- pipeline(Get(q.url))) {
+				val json = httpResponse.entity.asString.toJson
+				val listing = new Listing(json.get(1))
+				listing.things.collect { case c:Comment => c } foreach f
+//				for (_ <- 0 until pages - 1) {
+//					for {
+//						next <- q.next(listing)
+//						httpResponse <- pipeline(Get(next.url))
+//					} {
+//						val listing = new Listing(json.get(1))
+//						listing.things.collect { case c:Comment => c } foreach { c => f(c)}
+//					}
+//				}
+			}
+		}
+		scroll { c =>
+			def traverse2(c:Comment, ancestors:Seq[Comment]) {
+				val continue = f(ancestors, c)
+				if (continue) c.replies.things.foreach {
+					case child:Comment => traverse2(child, c +: ancestors)
+					case m:More => {
+						for (commentId <- m.children) {
+							val q = Query("comments/%s/x/%s".format(linkId, commentId))
+							for (httpResponse <- pipeline(Get(q.url))) {
+								val json = httpResponse.entity.asString.toJson
+								val listing = new Listing(json.get(1))
+								for (child <- listing.things.collect { case c:Comment => c }) {
+									traverse2(child, c +: ancestors)
+								}
+							}
+						}
+					}
 				}
 			}
-		})) ! "wget -o /tmp/wget.log -P /tmp %s".format(link.url)
+			traverse2(c, Seq())
+		}
+	}
+
+//
+//	scroll[Link](Subreddit("pics").hot.copy(limit = 2), 1) { l =>
+//		println("hot " + l)
+//	}
+//	scroll[Link](Subreddit("pics").`new`.copy(limit = 2), 1) { l =>
+//		println("new " + l)
+//	}
+//	scroll[Link](Subreddit("pics").controversial.copy(limit = 2), 1) { l =>
+//		println("controversial " + l)
+//	}
+//	scroll[Link](Subreddit("pics").top("").copy(limit = 2), 1) { l =>
+//		println("top " + l)
+//	}
+
+	// download top images from r/pics
+//	import sys.process._
+//	val executeCommand = system.actorOf(Props(new Actor {
+//		def receive = {
+//			case cmd:String => cmd.run
+//		}
+//	}))
+//	scroll(Subreddit("pics").top("year")) { link:Link =>
+//		executeCommand ! "wget -o /tmp/wget.log -P /tmp %s".format(link.url)
+//	}
+
+	// iterate link comments
+	traverse("16716l") { (ancestors, c) =>
+		println("-" * ancestors.size + c.body)
+		true
 	}
 
 	println("SLEEP...")
-	Thread.sleep(30000)
-	system.shutdown
+//	Thread.sleep(30000)
+	system.awaitTermination
+//	system.shutdown
 }

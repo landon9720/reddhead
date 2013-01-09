@@ -45,6 +45,19 @@ traverse("16716l") { (ancestors, comment) =>
 }
 ```
 
+### concurrently read 2 feeds ###
+
+``` scala
+scroll(Query("/top"), new Listing(_)) { t =>
+	println("TOP: " + t.name)
+	true
+}
+scroll(Query("/new"), new Listing(_)) { t =>
+	println("NEW: " + t.name)
+	true
+}
+```
+
 ### monitor new stream
 
 ## references

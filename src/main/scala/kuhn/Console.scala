@@ -144,7 +144,6 @@ object Console extends App {
 	val conduit = system.actorOf(Props(new HttpConduit(httpClient, "www.reddit.com", 80)))
 
 	val throttler = system.actorOf(Props(new TimerBasedThrottler(Rate(1, 3 seconds))))
-	throttler ! SetRate(Rate(10, 1 minute))
 	throttler ! SetTarget(Some(conduit))
 
 	val pipeline = sendReceive(throttler)
@@ -162,7 +161,7 @@ object Console extends App {
         path:String,
         before:Option[String] = None,
         after:Option[String] = None,
-        limit:Int = 2,
+//        limit:Int = 2,
         sort:Option[String] = None,
         t:Option[String] = None
 	) {
@@ -178,75 +177,47 @@ object Console extends App {
 			t.map("t=%s&".format(_)).getOrElse("")
 	}
 
-	def scroll[T <: Thing](q:Query, pages:Int = 2)(f:T=>Unit) {
+	def scroll(q:Query, factory:JsonNode=>Listing = new Listing(_))(f:Thing=>Boolean) {
 		for (httpResponse <- pipeline(Get(q.url))) {
-			var listing = new Listing(httpResponse.entity.asString.toJson)
-			listing.things.collect { case t:T => t } foreach f
-			for (_ <- 0 until pages - 1) {
-				for {
-					next <- q.next(listing)
-					httpResponse <- pipeline(Get(next.url))
-				} {
-					listing = new Listing(httpResponse.entity.asString.toJson)
-					listing.things.collect { case t:T => t } foreach f
-				}
-			}
+			val listing = factory(httpResponse.entity.asString.toJson)
+			val continue = listing.things.forall(f)
+			if (continue) q.next(listing).map(next => scroll(next, factory)(f))
 		}
 	}
 
-	def traverse(linkId:String, t:Option[String] = None)(f:(Seq[Comment], Comment)=>Boolean) {
-		def scroll(f:Comment=>Unit) {
-			val q = Query("comments/%s".format(linkId), t = t)
-			for (httpResponse <- pipeline(Get(q.url))) {
-				val json = httpResponse.entity.asString.toJson
-				val listing = new Listing(json.get(1))
-				listing.things.collect { case c:Comment => c } foreach f
-//				for (_ <- 0 until pages - 1) {
-//					for {
-//						next <- q.next(listing)
-//						httpResponse <- pipeline(Get(next.url))
-//					} {
-//						val listing = new Listing(json.get(1))
-//						listing.things.collect { case c:Comment => c } foreach { c => f(c)}
-//					}
-//				}
-			}
-		}
-		scroll { c =>
-			def traverse2(c:Comment, ancestors:Seq[Comment]) {
-				val continue = f(ancestors, c)
-				if (continue) c.replies.things.foreach {
-					case child:Comment => traverse2(child, c +: ancestors)
-					case m:More => {
-						for (commentId <- m.children) {
-							val q = Query("comments/%s/x/%s".format(linkId, commentId))
-							for (httpResponse <- pipeline(Get(q.url))) {
-								val json = httpResponse.entity.asString.toJson
-								val listing = new Listing(json.get(1))
-								for (child <- listing.things.collect { case c:Comment => c }) {
-									traverse2(child, c +: ancestors)
-								}
-							}
-						}
-					}
-				}
-			}
-			traverse2(c, Seq())
+	def links(q:Query, factory:JsonNode=>Listing = new Listing(_))(f:Link=>Boolean) {
+		scroll(q, factory) {
+			case l:Link => f(l)
 		}
 	}
 
-//
-//	scroll[Link](Subreddit("pics").hot.copy(limit = 2), 1) { l =>
-//		println("hot " + l)
+	def comments(linkId:String)(f:(Seq[Comment], Comment)=>Boolean) {
+		def impl(c:Comment, ancestors:Seq[Comment] = Seq()):Boolean = {
+			f(ancestors, c) && c.replies.things.forall {
+				case child:Comment => impl(child, c +: ancestors)
+				case _:More => true
+			}
+		}
+		scroll(Query("comments/%s".format(linkId)), j => new Listing(j.get(1))) {
+			case c:Comment => impl(c); true
+			case _:More => true
+		}
+	}
+
+	// iterate front page links
+//	links(Query("/")) { l:Link =>
+//		println("""<img href="%s"/>""".format(l.url))
+//		true
 //	}
-//	scroll[Link](Subreddit("pics").`new`.copy(limit = 2), 1) { l =>
-//		println("new " + l)
+
+//	// concurrently read 2 different feeds
+//	scroll(Query("/top")) { t =>
+//		println("TOP: " + t.name)
+//		true
 //	}
-//	scroll[Link](Subreddit("pics").controversial.copy(limit = 2), 1) { l =>
-//		println("controversial " + l)
-//	}
-//	scroll[Link](Subreddit("pics").top("").copy(limit = 2), 1) { l =>
-//		println("top " + l)
+//	scroll(Query("/new")) { t =>
+//		println("NEW: " + t.name)
+//		true
 //	}
 
 	// download top images from r/pics
@@ -261,13 +232,13 @@ object Console extends App {
 //	}
 
 	// iterate link comments
-	traverse("16716l") { (ancestors, c) =>
-		println("-" * ancestors.size + c.body)
-		true
-	}
+//	comments("16716l") { (ancestors, c) =>
+//		println("-" * ancestors.size + c.body)
+//		true
+//	}
 
 	println("SLEEP...")
-//	Thread.sleep(30000)
-	system.awaitTermination
+	Thread.sleep(30000)
+//	system.awaitTermination
 //	system.shutdown
 }

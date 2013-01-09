@@ -12,57 +12,59 @@ API's and use cases methods are also provided. See `api.scala`.
 
 Clone this git repo.
 
+Examine `Console.scala`. Uncomment the use case you want to test. Run with `sbt run`.
 
+I have been having memory issues with SBT. I am experimenting with setting `export SBT_OPTS='-XX:MaxPermSize=512m -Xms512m -Xmx512m'`.
 
 ## use cases
 
-### iterate front page links
+### print front page image links
 
 ``` scala
-
-```
-
-### download top images from r/pics
-
-``` scala
-scroll(Subreddit("pics").top("YEAR").copy(limit = 100), pages = 10) { link:Link =>
-	system.actorOf(Props(new Actor with ActorLogging {
-		def receive = {
-			case cmd:String => {
-				log.info(cmd)
-				import sys.process._
-				cmd.run
-			}
-		}
-	})) ! "wget -o /tmp/wget.log -P /tmp %s".format(link.url)
-}
-```
-
-### crawl link comments
-
-``` scala
-traverse("16716l") { (ancestors, comment) =>
-	println("-" * ancestors.size + comment.body)
-	ancestors.size < 4
+links(frontpage) {
+	case link if link.domain == "i.imgur.com" => println("""<img href="%s"/>""".format(link))
 }
 ```
 
 ### concurrently read 2 feeds ###
 
-Thanks to Akka and Spray all web service interaction happens in background threads, and all API calls are non-blocking. This allows us to run concurrent behaviors.
-
 ``` scala
-links(Query("/top"), new Listing(_)) { l =>
-	println("TOP: " + l.name)
-	true
+links(frontpage_top) {
+	case t => println("top: " + t)
 }
-links(Query("/new"), new Listing(_)) { l =>
-	println("NEW: " + l.name)
-	true
+links(frontpage_new) {
+	case t => println("new: " + t)
 }
 ```
 
-This example crawls links from two different feeds. Each link is printed to stdout, which will result in interleaved output. An improvement might be to write the output to files.
+Thanks to Akka and Spray all web service calls happens in background threads, and are non-blocking. This allows us to run concurrent behaviors. This example crawls links from two different feeds. Each link is printed to stdout, which will result in interleaved output. An improvement might be to write the output to files.
+
+### download images from r/pics
+
+``` scala
+import sys.process._
+import akka.actor._
+val execute = system.actorOf(Props(new Actor {
+	def receive = {
+		case cmd:String => cmd.run
+	}
+}))
+links(subreddit("pics")) {
+	case link => execute ! "wget -o /tmp/wget.log -P /tmp %s".format(link)
+}
+```
+
+An actor is created to handle spawning the `wget` process. Crawling Reddit and downloading images happen concurrently!
+
+### crawl link comments
+
+``` scala
+comments("16716l") {
+	case (ancestors, c) => println("-" * ancestors.size + c.body)
+}
+```
+
+`ancestors` contains this comment's parent comment, listing back to the root comment. Here I am using its `size` to format the output.
 
 ### monitor new stream
 

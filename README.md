@@ -42,17 +42,16 @@ scroll(user("masta")) {
 ### monitor the front page for new posts
 
 ``` scala
-	// 
-	monitor_links(frontpage) {
-		case l => println(l)
-	}
+monitor_links(frontpage) {
+	case l => println(l)
+}
 ```
 
 Realtime monitoring of new links.
 
 ### monitor the top post for new comments
 
-```
+``` scala
 first_link(frontpage) {
 	case l: Link => monitor_comments(l) {
 		case (_, c) => println(c)

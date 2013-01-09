@@ -31,7 +31,7 @@ links(frontpage) {
 ### print all submissions and comments by user "masta"
 
 ``` scala
-scroll(user("col-summers")) {
+scroll(user("masta")) {
 	case l:Link => println("link: %s".format(l))
 	case c:Comment => println("comment: " + c)
 }

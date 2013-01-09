@@ -12,7 +12,6 @@ object Console extends App {
 
 	// print all submissions and comments by user "masta"
 //	scroll(user("masta")) {
-	
 //		case l:Link => println("link: %s".format(l))
 //		case c:Comment => println("comment: " + c)
 //	}

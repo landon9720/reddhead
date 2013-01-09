@@ -1,20 +1,22 @@
 ## reddhead
 
-Reddhead provides a Scala abstraction over Reddit web services. Reddhead makes it simple to write programs that consume data from the Reddit front page and subreddits, including article comments and other metadata.
+Reddhead provides a Scala abstraction over Reddit web services. Reddhead makes it simple to write programs that consume data from the Reddit front page and subreddits, including article comments and other metadata. The intent is to provide an abstraction that is type safe and conforms to idiomatic functional programing style.
 
-Brainstem uses [Spray]() and [Akka](). Akka provides asynchronous messaging, and Spray provides a REST client built on top of Akka. [TimerBasedThrottler]() is used to throttle web service calls [in accordance with Reddit's rules]().
+Reddhead uses [Spray]() and [Akka](). Akka provides asynchronous messaging, and Spray provides a REST client built on top of Akka. [TimerBasedThrottler]() is used to throttle web service calls [in accordance with Reddit's rules]().
 
-Model classes provide typed abstractions over Reddit JSON objects. See `model.scala`.
+Model classes provide typed abstractions over Reddit JSON objects. See [`model.scala`](https://github.com/landon9720/reddhead/blob/master/src/main/scala/kuhn/model.scala).
 
-API's and use cases methods are also provided. See `api.scala`.
+APIs provide abstractions over Reddit queries and use cases. See [`api.scala`](https://github.com/landon9720/reddhead/blob/master/src/main/scala/kuhn/api.scala).
+
+The [`Console`](https://github.com/landon9720/reddhead/blob/master/src/main/scala/kuhn/Console.scala) class demonstrates how to create the environment and use the API.
 
 ## getting started
 
 Clone this git repo.
 
-Examine `Console.scala`. Uncomment the use case you want to test. Run with `sbt run`.
+Examine [`Console.scala`](https://github.com/landon9720/reddhead/blob/master/src/main/scala/kuhn/Console.scala). Uncomment the use case you want to test. Run with `sbt run`.
 
-I have been having memory issues with SBT. I am experimenting with setting `export SBT_OPTS='-XX:MaxPermSize=512m -Xms512m -Xmx512m'`.
+I have been having memory issues with SBT. I am experimenting with `export SBT_OPTS='-XX:MaxPermSize=512m -Xms512m -Xmx512m'`.
 
 ## use cases
 

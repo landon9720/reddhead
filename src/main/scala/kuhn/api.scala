@@ -33,8 +33,12 @@ object api {
 			after.map("after=%s&".format(_)).getOrElse("")
 	}
 
+	def request(q:Query) = {
+		pipeline(Get(q.url) ~> addHeader("User-Agent", "https://github.com/landon9720/reddhead"))
+	}
+
 	def scroll(q:Query, factory:JsonNode=>Listing = new Listing(_))(f:PartialFunction[Thing, Unit]) {
-		for (httpResponse <- pipeline(Get(q.url))) {
+		for (httpResponse <- request(q)) {
 			val listing = factory(httpResponse.entity.asString.toJson)
 			for (t <- listing if f.isDefinedAt(t)) f(t)
 			q.next(listing).map(next => scroll(next, factory)(f))
@@ -60,6 +64,13 @@ object api {
 			case _:More =>
 		}
 	}
+
+//	def monitor_links(q:Query)(f:PartialFunction[Link, Unit]) {
+//		val last = collection.mutable.Set[String]
+//		system.scheduler.schedule(0 seconds, 30 seconds) {
+//			links(q) { case l => f(l) }
+//		}
+//	}
 
 	def shutdown = system.shutdown
 }

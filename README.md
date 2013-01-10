@@ -30,7 +30,7 @@ links(frontpage) {
 
 The `frontpage` parameter to `links` specifies which feed to consume. The block that follows is called for each link in the feed. Reddhead scrolls through the entire feed (until the program is killed, or Reddit returns no data).
 
-### print all submissions and comments by user "masta"
+### print all submissions and comments by user
 
 ``` scala
 scroll(user("masta")) {

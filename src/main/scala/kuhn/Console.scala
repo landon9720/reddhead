@@ -22,11 +22,11 @@ object Console extends App {
 //	}
 
 	// monitor the top post for new comments
-//	first_link(frontpage) {
-//		case l: Link => monitor_comments(l) {
-//			case (_, c) => println(c)
-//		}
-//	}
+	first_link(frontpage) {
+		l: Link => monitor_comments(l) {
+			case (_, c) => println(c)
+		}
+	}
 
 	// concurrently read 2 feeds
 //	links(frontpage_top) {

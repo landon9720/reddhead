@@ -97,12 +97,7 @@ object api {
 
 	def first_comment(linkId:String)(f:(Comment) => Unit) {
 		scroll(Query("comments/%s".format(linkId)), j => new Listing(j.get(1))) {
-			case c:Comment => {
-				traverse_comments(c) {
-					case (_, c) => f(c)
-				}
-				false
-			}
+			case c:Comment => f(c); false
 			case _:More => true
 		}
 	}

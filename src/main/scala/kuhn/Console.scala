@@ -6,9 +6,9 @@ object Console extends App {
 	import api._
 
 	// print front page image links
-//	links(frontpage) {
-//		case link if link.domain == "i.imgur.com" => println("""<img href="%s"/>""".format(link))
-//	}
+	links(frontpage) {
+		case link if link.domain == "i.imgur.com" => println("""<img href="%s"/>""".format(link))
+	}
 
 	// print all submissions and comments by user
 //	scroll(user("masta")) {
@@ -22,11 +22,11 @@ object Console extends App {
 //	}
 
 	// monitor the top post for new comments
-	first_link(frontpage) {
-		l: Link => monitor_comments(l) {
-			case (_, c) => println(c)
-		}
-	}
+//	first_link(frontpage) {
+//		l: Link => monitor_comments(l) {
+//			case (_, c) => println(c)
+//		}
+//	}
 
 	// concurrently read 2 feeds
 //	links(frontpage_top) {
@@ -49,11 +49,28 @@ object Console extends App {
 //	}
 
 	// crawl link comments
-//	comments("16716l") {
+//	comments("92dd8") {
 //		case (ancestors, c) => println("-" * ancestors.size + c.body)
 //	}
 
+	// build a social graph by reading comments
+//	var connections = Map[Set[String], Int]().withDefaultValue(0)
+//	links(frontpage_top) {
+//		case link => comments(link) {
+//			case (ancestors, comment) => {
+//				val user1 = ancestors match {
+//					case parent :: _ => parent.author
+//					case Nil => link.author
+//				}
+//				val user2 = comment.author
+//				val key = Set(user1, user2)
+//				connections = connections + (key -> (connections(key) + 1))
+//				println("%s / %s = %d".format(user1, user2, connections(key)))
+//			}
+//		}
+//	}
+
 	println("SLEEP...")
-	Thread.sleep(120000)
+	Thread.sleep(60000)
 	shutdown
 }

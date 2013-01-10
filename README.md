@@ -16,7 +16,7 @@ Clone this git repo.
 
 Examine [`Console.scala`](https://github.com/landon9720/reddhead/blob/master/src/main/scala/kuhn/Console.scala). Uncomment the use case you want to test. Run with `sbt run`.
 
-I have been having memory issues with SBT. I am experimenting with `export SBT_OPTS='-XX:MaxPermSize=512m -Xms512m -Xmx512m'`.
+I have been having memory issues. I am experimenting with `export SBT_OPTS='-XX:MaxPermSize=512m -Xms512m -Xmx512m'`.
 
 ## use cases
 
@@ -105,14 +105,27 @@ comments("16716l") {
 
 `ancestors` contains this comment's parent comment, listing back to the root comment. Here I am using its `size` to format the output.
 
-### build social graph
-
-Build a social graph representing the connections of Reddit users. Determine connections by publicly available data, such as comment replies.
+### build a social graph by reading comments
 
 ``` scala
-// with a bit more tooling this use case can be
-// illistrated in a few lines of code
+var connections = Map[Set[String], Int]().withDefaultValue(0)
+links(frontpage_top) {
+	case link => comments(link) {
+		case (ancestors, comment) => {
+			val user1 = ancestors match {
+				case parent :: _ => parent.author
+				case Nil => link.author
+			}
+			val user2 = comment.author
+			val key = Set(user1, user2)
+			connections = connections + (key -> (connections(key) + 1))
+			println("%s / %s = %d".format(user1, user2, connections(key)))
+		}
+	}
+}
 ```
+
+Here we build a simple social graph by reading Reddit comments. This code reads all the comments on all the posts on the front page. Each comment counts as a connection between the author and the parent comment. Top level comments count as a connection between the commentor and the OP. The connection count is incremented and printed along the way, creating a simple report.
 
 ## TODO
 

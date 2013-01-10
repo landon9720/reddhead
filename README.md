@@ -39,7 +39,9 @@ scroll(user("masta")) {
 }
 ```
 
-(This user is a mod on /r/pics, so I assume he has a lively feed.)
+This user is a mod on */r/pics*, so I assume he or she has a lively feed.
+
+The callback block is executed for each `Thing` in the feed. The parameter is a `PartialFunction[Thing, Unit]`, allowing this abbreviated `match` syntax.
 
 ### monitor the front page for new posts
 
@@ -49,7 +51,7 @@ monitor_links(frontpage) {
 }
 ```
 
-Realtime monitoring of new links.
+The callback is called for each `Link` from the main feed. Note that these functions consume all pages of the feed, not just what is visible on the first page of the UI. Reddhead will make multiple API requests to Reddit in order to get the data. Requests happen lazily (as needed) and follow Reddit's throttling rules.
 
 ### monitor the top post for new comments
 
@@ -61,7 +63,7 @@ first_link(frontpage) {
 }
 ```
 
-Realtime monitoring of comments.
+This example prints new comments as they appear in a story. The story used is the top link from the front page feed.
 
 ### concurrently read 2 feeds ###
 
@@ -114,6 +116,7 @@ Build a social graph representing the connections of Reddit users. Determine con
 
 ## TODO
 
+* package as a library
 * authenticated write requests (voting, link submission, commenting, etc.)
 * traversal into `more` comments
 

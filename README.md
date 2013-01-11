@@ -30,6 +30,34 @@ links(frontpage) {
 
 The `frontpage` parameter to `links` specifies which feed to consume. The block that follows is called for each link in the feed. Reddhead scrolls through the entire feed (until the program is killed, or Reddit returns no data).
 
+Output:
+
+```
+<img href="http://i.imgur.com/oIJMk.jpg"/>
+<img href="http://i.imgur.com/dFMeh.png"/>
+<img href="http://i.imgur.com/oyAET.jpg"/>
+<img href="http://i.imgur.com/nrl9w.jpg"/>
+<img href="http://i.imgur.com/bgrDM.jpg"/>
+<img href="http://i.imgur.com/T4dlD.jpg"/>
+<img href="http://i.imgur.com/1iL6G.jpg"/>
+<img href="http://i.imgur.com/yNsQt.png"/>
+<img href="http://i.imgur.com/Fls4C.jpg"/>
+<img href="http://i.imgur.com/wqtMD.jpg"/>
+<img href="http://i.imgur.com/XqBS7.png"/>
+<img href="http://i.imgur.com/3tmgi.jpeg"/>
+<img href="http://i.imgur.com/Qy0ol.jpg"/>
+<img href="http://i.imgur.com/cFLfy.jpg"/>
+<img href="http://i.imgur.com/SCEMx.jpg"/>
+<img href="http://i.imgur.com/FZf1J.jpg"/>
+<img href="http://i.imgur.com/ERCVX.gif"/>
+<img href="http://i.imgur.com/ExhfA.jpeg"/>
+<img href="http://i.imgur.com/7nKNO.png?3"/>
+<img href="http://i.imgur.com/Fc4tg.jpg"/>
+<img href="http://i.imgur.com/Jj1jH.jpg"/>
+<img href="http://i.imgur.com/lN7Ln.jpg"/>
+<img href="http://i.imgur.com/aAEwP.gif"/>
+```
+
 ### print all submissions and comments by user
 
 ``` scala
@@ -126,6 +154,37 @@ links(frontpage_top) {
 ```
 
 Here we build a simple social graph by reading Reddit comments. This code reads all the comments on all the posts on the front page. Each comment counts as a connection between the author and the parent comment. Top level comments count as a connection between the commentor and the OP. The connection count is incremented and printed along the way, creating a simple report.
+
+output:
+
+```
+goleks / OddDude55 = 1
+troshinsky / CharlesFoxtrot = 1
+troshinsky / nittywame = 1
+nittywame / AlexHeyNa = 1
+AlexHeyNa / troshinsky = 1
+troshinsky / eobet = 1
+troshinsky / tembies = 1
+troshinsky / Not_A_Hipster_ = 1
+Not_A_Hipster_ / troshinsky = 2
+troshinsky / whatsthematter = 1
+whatsthematter / troshinsky = 2
+troshinsky / Melton_John = 1
+troshinsky / onebighoopla = 1
+onebighoopla / troshinsky = 2
+troshinsky / onebighoopla = 3
+onebighoopla / troshinsky = 4
+troshinsky / guydudeman = 1
+troshinsky / fer_ril = 1
+fer_ril / troshinsky = 2
+troshinsky / eyecite = 1
+troshinsky / fer_ril = 3
+fer_ril / troshinsky = 4
+troshinsky / anonysera = 1
+troshinsky / FatalLozenge = 1
+FatalLozenge / troshinsky = 2
+troshinsky / FatalLozenge = 3
+```
 
 ## TODO
 

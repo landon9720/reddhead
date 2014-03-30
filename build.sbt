@@ -23,7 +23,12 @@ libraryDependencies ++= {
     "com.typesafe.akka"       %%  "akka-actor"    % akkaV,
     "com.typesafe.akka"       %%  "akka-testkit"  % akkaV   % "test",
     "org.specs2"              %%  "specs2-core"   % "2.3.7" % "test",
-    "uk.co.bigbeeconsultants" %%  "bee-client"    % "0.21.+"
+    "uk.co.bigbeeconsultants" %%  "bee-client"    % "0.21.+",
+    "org.slf4j"               %   "slf4j-api"     % "1.7.+",
+    "ch.qos.logback"          %   "logback-core"  % "1.0.+",
+    "ch.qos.logback"          %   "logback-classic" % "1.0.+",
+    "org.scalaz"              %%  "scalaz-core"   % "7.0.6",
+    "org.neo4j"               %   "neo4j"         % "2.0.0"
   )
 }
 

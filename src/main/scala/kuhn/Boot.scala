@@ -15,28 +15,36 @@ import org.neo4j.graphdb._, factory._
 import org.neo4j.tooling.GlobalGraphOperations
 import collection.JavaConverters._
 import graph._
-import actors._
+
 import akka.contrib.throttle._, Throttler._
 import scalaz._
 import Scalaz._
 
-object actors {
+object actors extends App {
 
   implicit val system = ActorSystem()
+  implicit val ec = system.dispatcher
 
   val reddit = {
     val throttler = system.actorOf(Props(classOf[TimerBasedThrottler], 30 msgsPerMinute))
     throttler ! SetTarget(system.actorOf(Props[reddit]).some)
     throttler
   }
-  val newPageHandler = system.actorOf(Props[NewPageHandler])
-  val newStoryHandler = system.actorOf(Props[NewStoryHandler])
+  val `new page actor` = system.actorOf(Props[NewPage])
+  val `new story actor` = system.actorOf(Props[NewStory])
 
 //  val service = system.actorOf(Props[ServiceActor])
 //  implicit val timeout = Timeout(5.seconds)
 //  IO(Http) ? Http.Bind(service, interface = "localhost", port = 9797)
 
+    system.scheduler.schedule(1 second, 60 seconds, reddit, "frontpage")
+
+    system.registerOnTermination {
+      graph.shutdown()
+    }
 }
+
+import actors._
 
 import akka.actor.Actor
 import spray.routing._
@@ -58,44 +66,32 @@ import MediaTypes._
 //  }
 //}
 
-class NewPageHandler extends Actor {
+import Console._
 
-  val log = LoggerFactory.getLogger(classOf[NewPageHandler])
+class NewPage extends Actor {
+
+  val log = LoggerFactory.getLogger(classOf[NewPage])
   import log._
 
   def receive = {
     case pageName: String ⇒ tx { tf: TF ⇒
       val title = getNode(`page name`, pageName).getProperty(`page name`).asInstanceOf[String]
-      info(title)
+      info(s"$YELLOW$title$RESET")
     }
   }
 }
 
-class NewStoryHandler extends Actor {
+class NewStory extends Actor {
 
-  val log = LoggerFactory.getLogger(classOf[NewStoryHandler])
+  val log = LoggerFactory.getLogger(classOf[NewStory])
   import log._
 
   def receive = {
     case storyName: String ⇒ tx { tf: TF ⇒
       val title = getNode(`story name`, storyName).getProperty(`story title`).asInstanceOf[String]
-      info(title)
+      info(s"$YELLOW$title$RESET")
     }
   }
-}
-
-object console extends App {
-
-  try {
-    reddit ! "frontpage"
-  }
-
-  finally {
-    Thread.sleep(5000)
-    actors.system.shutdown()
-    shutdown()
-  }
-  
 }
 
 class graph(indexes: String*) {
@@ -200,7 +196,7 @@ class reddit extends Actor {
   def receive = {
     case "frontpage" ⇒
 
-      val page = http.get(new URL("http://reddit.com/.json")).body.asString.asJson.convertTo[Page]
+      val page = http.get(new URL("http://www.reddit.com/.json")).body.asString.asJson.convertTo[Page]
 
       tx { tf: TF ⇒
 
@@ -208,7 +204,7 @@ class reddit extends Actor {
           val newPageNode = createNode
           newPageNode.setProperty(`page name`, `frontpage page name`)
 
-          tf += { () ⇒ newPageHandler ! `frontpage page name` }
+          tf += { () ⇒ `new page actor` ! `frontpage page name` }
 
           newPageNode
         }
@@ -221,7 +217,7 @@ class reddit extends Actor {
             newStoryNode.setProperty(`kind`, `story kind`)
             newStoryNode.setProperty(`story name`, data.name)
 
-            tf += { () ⇒ newStoryHandler ! data.name }
+            tf += { () ⇒ `new story actor` ! data.name }
 
             // ?
             pageNode.createRelationshipTo(newStoryNode, `child relationship type`)

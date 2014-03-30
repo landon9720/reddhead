@@ -14,12 +14,28 @@ import org.slf4j.LoggerFactory
 import org.neo4j.graphdb._, factory._
 import org.neo4j.tooling.GlobalGraphOperations
 import collection.JavaConverters._
+import graph._
+import actors._
+import akka.contrib.throttle._, Throttler._
+import scalaz._
+import Scalaz._
 
-object Boot extends App {
-  implicit val system = ActorSystem("on-spray-can")
-  val service = system.actorOf(Props[ServiceActor], "service-actor")
-  implicit val timeout = Timeout(5.seconds)
-  IO(Http) ? Http.Bind(service, interface = "localhost", port = 9797)
+object actors {
+
+  implicit val system = ActorSystem()
+
+  val reddit = {
+    val throttler = system.actorOf(Props(classOf[TimerBasedThrottler], 30 msgsPerMinute))
+    throttler ! SetTarget(system.actorOf(Props[reddit]).some)
+    throttler
+  }
+  val newPageHandler = system.actorOf(Props[NewPageHandler])
+  val newStoryHandler = system.actorOf(Props[NewStoryHandler])
+
+//  val service = system.actorOf(Props[ServiceActor])
+//  implicit val timeout = Timeout(5.seconds)
+//  IO(Http) ? Http.Bind(service, interface = "localhost", port = 9797)
+
 }
 
 import akka.actor.Actor
@@ -27,22 +43,62 @@ import spray.routing._
 import spray.http._
 import MediaTypes._
 
-class ServiceActor extends Actor with HttpService {
-  def actorRefFactory = context
-  def receive = runRoute {
-    path("") {
-      get {
-        respondWithMediaType(`text/html`) {
-          complete {
-            <html><body></body></html>
-          }
-        }
-      }
+//class ServiceActor extends Actor with HttpService {
+//  def actorRefFactory = context
+//  def receive = runRoute {
+//    path("") {
+//      get {
+//        respondWithMediaType(`text/html`) {
+//          complete {
+//            <html><body></body></html>
+//          }
+//        }
+//      }
+//    }
+//  }
+//}
+
+class NewPageHandler extends Actor {
+
+  val log = LoggerFactory.getLogger(classOf[NewPageHandler])
+  import log._
+
+  def receive = {
+    case pageName: String ⇒ tx { tf: TF ⇒
+      val title = getNode(`page name`, pageName).getProperty(`page name`).asInstanceOf[String]
+      info(title)
+    }
+  }
+}
+
+class NewStoryHandler extends Actor {
+
+  val log = LoggerFactory.getLogger(classOf[NewStoryHandler])
+  import log._
+
+  def receive = {
+    case storyName: String ⇒ tx { tf: TF ⇒
+      val title = getNode(`story name`, storyName).getProperty(`story title`).asInstanceOf[String]
+      info(title)
     }
   }
 }
 
 object console extends App {
+
+  try {
+    reddit ! "frontpage"
+  }
+
+  finally {
+    Thread.sleep(5000)
+    actors.system.shutdown()
+    shutdown()
+  }
+  
+}
+
+class graph(indexes: String*) {
 
   val `kind` = "kind"
   val `page kind`  = "page"
@@ -62,54 +118,13 @@ object console extends App {
   val `story subreddit` = "story_subreddit"
   val `story author`    = "story_author"
 
-  val graph = new graph(`page name`, `story name`)
-  import graph._
-
   val `child relationship type` = DynamicRelationshipType.withName("child")
 
-  val logger = LoggerFactory.getLogger("console")
-  import logger._
-
-  try tx {
-
-    val page = reddit.frontpage
-
-    val pageNode = ø(`page name`, `frontpage page name`).getOrElse {
-      val newPageNode = ç
-      newPageNode.setProperty(`page name`, `frontpage page name`)
-      newPageNode
-    }
-
-    for (child ← page.data.children) {
-      val data = child.data
-      val node = ç
-      pageNode.createRelationshipTo(node, `child relationship type`)
-      node.setProperty(`kind`, `story kind`)
-      node.setProperty(`story name`, data.name)
-      node.setProperty(`story domain`, data.domain)
-      node.setProperty(`story title`, data.title)
-      node.setProperty(`story self text`, data.selftext)
-      node.setProperty(`story ups`, data.ups)
-      node.setProperty(`story downs`, data.downs)
-      node.setProperty(`story subreddit`, data.subreddit)
-      node.setProperty(`story author`, data.author)
-    }
-
-    for ((node, i) ← å.zipWithIndex) {
-      val props = node.getPropertyKeys.asScala.map(k ⇒ s"$k=${node.getProperty(k)}").mkString("\n")
-      info(s"\nNODE $i ${node.getId}\n$props")
-    }
-  }
-
-  finally shutdown()
-}
-
-class graph(indexes: String*) {
-
-  def tx[T](f: ⇒ T): T = {
+  def tx[T](f: TF ⇒ T): T = {
     val tx = graph.beginTx
-    try {
-      val t = f
+    val tf = new collection.mutable.ListBuffer[() ⇒ Unit]
+    val t = try {
+      val t = f(tf)
       tx.success()
       t
     }
@@ -121,12 +136,14 @@ class graph(indexes: String*) {
     finally {
       tx.close()
     }
+    tf.foreach(f ⇒ f())
+    t
   }
 
-  def ç = graph.createNode
-  def ©(k: String, v: String) = ø(k, v).getOrElse(sys.error("bam!"))
-  def ø(k: String, v: String) = Option(index.get(k, v).getSingle)
-  def å = GlobalGraphOperations.at(graph).getAllNodes.asScala
+  def createNode = graph.createNode
+  def getNode(k: String, v: String) = optNode(k, v).getOrElse(sys.error("bam!"))
+  def optNode(k: String, v: String) = Option(index.get(k, v).getSingle)
+  def allNodes = GlobalGraphOperations.at(graph).getAllNodes.asScala
 
   def shutdown() {
     graph.shutdown()
@@ -142,7 +159,11 @@ class graph(indexes: String*) {
   private val index = graph.index.getNodeAutoIndexer.getAutoIndex
 }
 
-object reddit {
+object graph extends graph("page_name", "story_name") {
+  type TF = collection.mutable.ListBuffer[() ⇒ Unit]
+}
+
+class reddit extends Actor {
 
   case class Page(
     kind: String,
@@ -174,9 +195,51 @@ object reddit {
   implicit val dataFormat = jsonFormat1(Data)
   implicit val pageFormat = jsonFormat2(Page)
 
-  val h = new HttpBrowser
+  val http = new HttpBrowser
 
-  def frontpage =
-    h.get(new URL("http://reddit.com/.json")).body.asString.asJson.convertTo[Page]
+  def receive = {
+    case "frontpage" ⇒
 
+      val page = http.get(new URL("http://reddit.com/.json")).body.asString.asJson.convertTo[Page]
+
+      tx { tf: TF ⇒
+
+        val pageNode = optNode(`page name`, `frontpage page name`).getOrElse {
+          val newPageNode = createNode
+          newPageNode.setProperty(`page name`, `frontpage page name`)
+
+          tf += { () ⇒ newPageHandler ! `frontpage page name` }
+
+          newPageNode
+        }
+
+        for (child ← page.data.children) {
+          val data = child.data
+
+          val node = optNode(`story name`, data.name).getOrElse {
+            val newStoryNode = createNode
+            newStoryNode.setProperty(`kind`, `story kind`)
+            newStoryNode.setProperty(`story name`, data.name)
+
+            tf += { () ⇒ newStoryHandler ! data.name }
+
+            // ?
+            pageNode.createRelationshipTo(newStoryNode, `child relationship type`)
+
+            newStoryNode
+          }
+
+          node.setProperty(`story domain`, data.domain)
+          node.setProperty(`story title`, data.title)
+          node.setProperty(`story self text`, data.selftext)
+          node.setProperty(`story ups`, data.ups)
+          node.setProperty(`story downs`, data.downs)
+          node.setProperty(`story subreddit`, data.subreddit)
+          node.setProperty(`story author`, data.author)
+        }
+
+      }
+
+
+  }
 }

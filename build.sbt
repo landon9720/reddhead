@@ -21,6 +21,7 @@ libraryDependencies ++= {
     "io.spray"                %   "spray-testkit" % sprayV  % "test",
     "io.spray"                %%  "spray-json"    % "1.2.5",
     "com.typesafe.akka"       %%  "akka-actor"    % akkaV,
+    "com.typesafe.akka"       %%  "akka-contrib"  % akkaV,
     "com.typesafe.akka"       %%  "akka-testkit"  % akkaV   % "test",
     "org.specs2"              %%  "specs2-core"   % "2.3.7" % "test",
     "uk.co.bigbeeconsultants" %%  "bee-client"    % "0.21.+",

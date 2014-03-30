@@ -2,7 +2,7 @@
 <configuration scan="false" debug="false">
     <appender name="stdout" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>[%4p] [%d{ISO8601}] [%t] %c{1}: %m%n</pattern>
+            <pattern>%p %d{h:mm a} %c{0} %m%n</pattern>
         </encoder>
     </appender>
     <logger name="akka://default/user/io-bridge" level="DEBUG"/>

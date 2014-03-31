@@ -35,11 +35,19 @@ object actors extends App {
 
 //  val service = system.actorOf(Props[ServiceActor])
 //  implicit val timeout = Timeout(5.seconds)
-//  IO(Http) ? Http.Bind(service, interface = "localhost", port = 9797)
+//  IO(Http) ? Http.Bind(service, interface = "localhost", port = 9797
+//
+//     case "frontpage"             ⇒ getPage("http://www.reddit.com/.json", `frontpage page name`)
+//    case "frontpage/new"         ⇒ getPage("http://www.reddit.com/new/.json", `frontpage/new page name`)
 
-    system.scheduler.schedule(1 second, 60 seconds, reddit, "frontpage")
+//    system.scheduler.schedule(1 second, 60 seconds, reddit, "frontpage")
+//    system.scheduler.schedule(1 second, 60 seconds, reddit, "frontpage/new")
+    system.scheduler.schedule(1 second, 60 seconds, reddit, 
+      ("commentstest", "http://www.reddit.com/r/funny/comments/21r672/the_creation_of_reddit/.json")
+    )
 
     system.registerOnTermination {
+      println("bye!")
       graph.shutdown()
     }
 }
@@ -87,26 +95,32 @@ class NewStory extends Actor {
   import log._
 
   def receive = {
-    case storyName: String ⇒ tx { tf: TF ⇒
-      val title = getNode(`story name`, storyName).getProperty(`story title`).asInstanceOf[String]
-      info(s"$YELLOW$title$RESET")
-    }
+    case storyName: String ⇒
+      tx { tf: TF ⇒
+        val node = getNode(`story name`, storyName)
+        val subreddit = node.getProperty(`story subreddit`).asInstanceOf[String]
+        val title = node.getProperty(`story title`).asInstanceOf[String]
+        val url = node.getProperty(`story url`).asInstanceOf[String]
+        info(s"/r/$subreddit $YELLOW$title$RESET $url")
+      }
   }
 }
 
 class graph(indexes: String*) {
 
-  val `kind` = "kind"
+  val `kind`       = "kind"
   val `page kind`  = "page"
   val `story kind` = "story"
 
   // page
-  val `page name` = "page_name"
-  val `frontpage page name` = "frontpage"
+  val `page name`               = "page_name"
+  val `frontpage page name`     = "frontpage"
+  val `frontpage/new page name` = "frontpage/new"
 
   // story
   val `story name`      = "story_name"
   val `story domain`    = "story_domain"
+  val `story url`       = "story_url"
   val `story title`     = "story_title"
   val `story self text` = "story_selftext"
   val `story ups`       = "story_ups"
@@ -167,16 +181,21 @@ class reddit extends Actor {
   )
 
   case class Data(
-    children: List[Child]
+    children: List[Child[_]],
+    after: Option[String],
+    before: Option[String]
   )
 
-  case class Child(
-    kind: String,
-    data: ChildData
+  case class Child[T <: ChildData](
+    kind: String, // t3 is a story listing, // t1 is a comment listing
+    data: T
   )
 
-  case class ChildData(
+  sealed trait ChildData
+
+  case class Story(
     domain: String,
+    url: String,
     title: String,
     selftext: String,
     ups: Int,
@@ -184,58 +203,79 @@ class reddit extends Actor {
     subreddit: String,
     name: String,   // unique id
     author: String
-  )
+  ) extends ChildData
 
-  implicit val childDataFormat = jsonFormat8(ChildData)
-  implicit val childFormat = jsonFormat2(Child)
-  implicit val dataFormat = jsonFormat1(Data)
-  implicit val pageFormat = jsonFormat2(Page)
+  case class Comment(
+    id: String
+  ) extends ChildData
+
+  implicit val commentFormat = jsonFormat1(Comment)
+  implicit val storyFormat   = jsonFormat9(Story)
+  implicit val childFormat     = new JsonReader[Child] {
+    def read(json: JsValue) = json.asJsObject.fields("kind").asInstanceOf[JsString].value match {
+      case "t1" ⇒ commentFormat.read(json)
+      case "t3" ⇒ storyFormat.read(json)
+    }
+  }jsonFormat2(Child)
+  implicit val dataFormat      = jsonFormat3(Data)
+  implicit val pageFormat      = jsonFormat2(Page)
 
   val http = new HttpBrowser
 
-  def receive = {
-    case "frontpage" ⇒
+  def getPage(name: String, url: String) = {
 
-      val page = http.get(new URL("http://www.reddit.com/.json")).body.asString.asJson.convertTo[Page]
+    val response = http.get(new URL(url))
+    val body = response.body.asString
+    val json = body.asJson
+    val pages = try {
+      List(json.convertTo[Page])
+    } catch {
+      case _: DeserializationException ⇒
+        json.convertTo[List[Page]]
+    }
 
-      tx { tf: TF ⇒
+    for (page ← pages ) tx {
+      tf: TF ⇒
 
-        val pageNode = optNode(`page name`, `frontpage page name`).getOrElse {
-          val newPageNode = createNode
-          newPageNode.setProperty(`page name`, `frontpage page name`)
+      val pageNode = optNode(`page name`, name).getOrElse {
+        val newPageNode = createNode
+        newPageNode.setProperty(`page name`, name)
 
-          tf += { () ⇒ `new page actor` ! `frontpage page name` }
+        tf += { () ⇒ `new page actor` ! name }
 
-          newPageNode
-        }
-
-        for (child ← page.data.children) {
-          val data = child.data
-
-          val node = optNode(`story name`, data.name).getOrElse {
-            val newStoryNode = createNode
-            newStoryNode.setProperty(`kind`, `story kind`)
-            newStoryNode.setProperty(`story name`, data.name)
-
-            tf += { () ⇒ `new story actor` ! data.name }
-
-            // ?
-            pageNode.createRelationshipTo(newStoryNode, `child relationship type`)
-
-            newStoryNode
-          }
-
-          node.setProperty(`story domain`, data.domain)
-          node.setProperty(`story title`, data.title)
-          node.setProperty(`story self text`, data.selftext)
-          node.setProperty(`story ups`, data.ups)
-          node.setProperty(`story downs`, data.downs)
-          node.setProperty(`story subreddit`, data.subreddit)
-          node.setProperty(`story author`, data.author)
-        }
-
+        newPageNode
       }
 
+      for (child ← page.data.children) {
+        val data = child.data.asInstanceOf[Story]
 
+        val node = optNode(`story name`, data.name).getOrElse {
+          val newStoryNode = createNode
+          newStoryNode.setProperty(`kind`, `story kind`)
+          newStoryNode.setProperty(`story name`, data.name)
+
+          tf += { () ⇒ `new story actor` ! data.name }
+
+          // ?
+          pageNode.createRelationshipTo(newStoryNode, `child relationship type`)
+
+          newStoryNode
+        }
+
+        node.setProperty(`story domain`, data.domain)
+        node.setProperty(`story url`, data.url)
+        node.setProperty(`story title`, data.title)
+        node.setProperty(`story self text`, data.selftext)
+        node.setProperty(`story ups`, data.ups)
+        node.setProperty(`story downs`, data.downs)
+        node.setProperty(`story subreddit`, data.subreddit)
+        node.setProperty(`story author`, data.author)
+      }
+
+    }
+  }
+
+  def receive = {
+    case (name: String, url: String) ⇒ getPage(name, url)
   }
 }

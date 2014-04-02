@@ -7,11 +7,13 @@ import akka.pattern.ask
 import akka.util.Timeout
 import scala.concurrent.duration._
 import uk.co.bigbeeconsultants.http.HttpBrowser
+import uk.co.bigbeeconsultants.http.request.RequestBody
 import java.net.URL
 import spray.json._
 import DefaultJsonProtocol._
 import org.slf4j.LoggerFactory
-import org.neo4j.graphdb._, factory._
+import org.neo4j.graphdb._
+import factory._
 import org.neo4j.tooling.GlobalGraphOperations
 import collection.JavaConverters._
 import graph._
@@ -45,6 +47,8 @@ object actors extends App {
   //    system.scheduler.schedule(1 second, 60 seconds, reddit, "frontpage")
   //    system.scheduler.schedule(1 second, 60 seconds, reddit, "frontpage/new")
 
+//  reddit ! GetMore("foo", List("bar"))
+//
   system.scheduler.schedule(1 second, 60 seconds, reddit,
     GetPage("commentstest", "http://www.reddit.com/r/funny/comments/21r672/the_creation_of_reddit/.json")
   )
@@ -124,7 +128,7 @@ class NewComment extends Actor {
       tx {
         tf: TF ⇒
           val node = getNode("comment_id", id)
-          val body = node.getProperty("comment_body").asInstanceOf[String]
+          val body = node.getProperty("comment_body").asInstanceOf[String].replaceAll("""\n""", " ")
           info(s"$CYAN$body$RESET")
       }
   }
@@ -201,7 +205,7 @@ object graph extends graph("page_name", "story_name", "comment_id") {
 }
 
 case class GetPage(name: String, url: String)
-case class GetMore(link_id: String, childrenn: Set[String])
+case class GetMore(link_id: String, children: List[String])
 
 class reddit extends Actor {
 
@@ -257,7 +261,7 @@ class reddit extends Actor {
                    children: List[String]
                    ) extends ChildData
 
-  implicit val moreFormat   : JsonFormat[More]        = jsonFormat1(More)
+  implicit val moreFormat   : JsonFormat[More]        = jsonFormat5(More)
   implicit val commentFormat: JsonFormat[Comment]     = lazyFormat(jsonFormat3(Comment))
   implicit val storyFormat  : JsonFormat[Story]       = jsonFormat9(Story)
   implicit val childFormat  : JsonFormat[Child]       = new JsonFormat[Child] {
@@ -331,14 +335,14 @@ class reddit extends Actor {
     for (child ← listing.data.children) child.data match {
       case story: Story ⇒ handleStory(story)
       case comment: Comment ⇒ handleComment(comment)
-      case more: More ⇒ warn("more: " + more)
+      case more: More ⇒ reddit ! GetMore(more.name, more.children)
       case t: ChildData ⇒ warn(s"ignoring $t")
     }
   }
 
   def receive = {
 
-    case GetPage(name, url) ⇒
+    case GetPage(name, url) ⇒ {
 
       val response = http.get(new URL(url))
       val body = response.body.asString
@@ -363,9 +367,19 @@ class reddit extends Actor {
       }
 
       listings.foreach(handleListing)
+    }
 
-    case GetMore(story_id: String, children: Set[String]) ⇒
-
+    case GetMore(link_id, children) ⇒ {
+      println("IN GetMore")
+      val response = http.post(new URL("http://www.reddit.com/api/morechildren"), RequestBody(Map(
+        "link_id" → link_id,
+        "children" → children.mkString(",")
+      )).some)
+      println(s"*** ${response.status}")
+      val body = response.body.asString
+      val json = body.asJson
+      println(s"*** ${response.status} ${json.prettyPrint}")
+    }
 
   }
 

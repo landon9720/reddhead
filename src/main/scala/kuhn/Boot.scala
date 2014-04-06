@@ -18,10 +18,6 @@ import factory._
 import org.neo4j.tooling.GlobalGraphOperations
 import collection.JavaConverters._
 import graph._
-import scala.util.Try
-
-//http://www.reddit.com/api/morechildren?link=&children=cgfv849
-//curl 'http://www.reddit.com/api/morechildren.json' --data 'link_id=t3_21r672&children=cgfv849&depth=2'
 
 import akka.contrib.throttle._, Throttler._
 import scalaz._
@@ -41,26 +37,9 @@ object actors extends App {
   val newLinkActor     = system.actorOf(Props[NewStory])
   val newCommentActor  = system.actorOf(Props[NewComment])
 
-  //  val service = system.actorOf(Props[ServiceActor])
-  //  implicit val timeout = Timeout(5.seconds)
-  //  IO(Http) ? Http.Bind(service, interface = "localhost", port = 9797
-  //
-  //     case "frontpage"             ⇒ getPage("http://www.reddit.com/.json", `frontpage page name`)
-  //    case "frontpage/new"         ⇒ getPage("http://www.reddit.com/new/.json", `frontpage/new page name`)
-
-  //    system.scheduler.schedule(1 second, 60 seconds, reddit, "frontpage")
-  //    system.scheduler.schedule(1 second, 60 seconds, reddit, "frontpage/new")
-
-  //  reddit ! GetMore("foo", List("bar"))
-  //
-
-//  reddit ! GetLink("t3_21r672")
-//  reddit ! GetComments("21r672")
-  reddit ! GetMore("t3_21r672", List("cgfxaaz"))
-
-
-  //    GetPage("commentstest", "http://www.reddit.com/r/funny/comments/21r672/the_creation_of_reddit/.json")
-  //  )
+  reddit ! GetPage("frontpage", "http://www.reddit.com/.json")
+  reddit ! GetLink("t3_21r672")
+  reddit ! GetComments("21r672", 1, 10, none, none)
 
   system.registerOnTermination {
     println("bye!")
@@ -69,27 +48,7 @@ object actors extends App {
 }
 
 import actors._
-
 import akka.actor.Actor
-import spray.routing._
-import spray.http._
-import MediaTypes._
-
-//class ServiceActor extends Actor with HttpService {
-//  def actorRefFactory = context
-//  def receive = runRoute {
-//    path("") {
-//      get {
-//        respondWithMediaType(`text/html`) {
-//          complete {
-//            <html><body></body></html>
-//          }
-//        }
-//      }
-//    }
-//  }
-//}
-
 import Console._
 
 class NewPage extends Actor {
@@ -133,11 +92,11 @@ class NewComment extends Actor {
   import log._
 
   def receive = {
-    case id: String ⇒
+    case name: String ⇒
       tx {
         tf: TF ⇒
-          val node = getNode("comment_id", id)
-          val body = node.getProperty("comment_body").asInstanceOf[String].replaceAll( """\n""", " ")
+          val node = getNode("name", name)
+          val body = node.getProperty("body").asInstanceOf[String].replaceAll( """\n""", " ")
           info(s"$CYAN$body$RESET")
       }
   }
@@ -195,9 +154,9 @@ object graph extends graph("name") {
 
 case class GetPage(name: String, url: String)
 
-case class GetLink(link_fullname: String)
+case class GetLink(name: String)
 
-case class GetComments(link_id: String)
+case class GetComments(link_id: String, depth: Int, limit: Int, comment_id: Option[String], context: Option[Int])
 
 case class GetMore(link_id: String, children: List[String])
 
@@ -283,16 +242,12 @@ class reddit extends Actor {
         case "t1" ⇒ commentFormat.read(data)
         case "t3" ⇒ linkFormat.read(data)
         case "more" ⇒ moreFormat.read(data)
-        case t ⇒ warn(s"what's this type? $t");
-          new ChildData {
-            override def toString = t
-          }
       })
     }
     def write(obj: Child) = ???
   }
   implicit val dataFormat : JsonFormat[ListingData] = jsonFormat3(ListingData)
-  implicit val pageFormat : JsonFormat[Listing]     = tryFormat(jsonFormat2(Listing))
+  implicit val pageFormat : JsonFormat[Listing]     = jsonFormat2(Listing)
 
   val http = new HttpBrowser
 
@@ -333,28 +288,13 @@ class reddit extends Actor {
       node.setProperty("body", comment.body)
       tf += {
         () ⇒
-          comment.replies.map(_.fold(
-            (l: Listing) ⇒ handleListing(link_id.some, l.data),
-            (s: String) ⇒ s match {
-              case "" ⇒ // ignore
-              case _ ⇒ error(s"WTF [$s]")
-            }
-          ))
+          for {
+            listing ← comment.replies.collect { case Left(listing) ⇒ listing }
+            child ← listing.data.children
+            if child.data.isInstanceOf[Comment]
+            comment = child.data.asInstanceOf[Comment]
+          } handleComment(link_id, comment)
       }
-  }
-
-  def handleListing(link_id: Option[String], listing: ListingData): Unit = {
-    debug(s"handleListing $link_id $listing")
-    for (child ← listing.children) handleChild(link_id, child)
-  }
-
-  def handleChild(link_id: Option[String], child: Child): Unit = (link_id, child.data) match {
-    case (_, story: Link) ⇒ handleLink(story)
-    case (Some(link_id), comment: Comment) ⇒ handleComment(link_id, comment)
-    case (_, comment: Comment) ⇒ error("i don't know link_id so i can't get comments")
-    case (Some(link_id), more: More) ⇒ warn(s"handleListing $link_id $more"); reddit ! GetMore("t3_" + link_id, more.children)
-    case (_, more: More) ⇒ error("i don't know link_id so i can't get more")
-    case (_, t: ChildData) ⇒ warn(s"ignoring $t")
   }
 
   def receive = {
@@ -363,27 +303,11 @@ class reddit extends Actor {
       val response = http.get(new URL(url))
       val body = response.body.asString
       val json = body.asJson
-      json.convertTo[List[Listing]].map(l ⇒ handleListing(none, l.data))
-
-      //      tx {
-      //        tf: TF ⇒
-      //          optNode(`page name`, name).getOrElse {
-      //            val newPageNode = createNode
-      //            newPageNode.setProperty(`page name`, name)
-      //            tf += {
-      //              () ⇒ `new page actor` ! name
-      //            }
-      //            newPageNode
-      //          }
-      //      }
-
-      //      val listing = try {
-      //        json.convertTo[Listing]
-      //      } catch {
-      //        case e: DeserializationException ⇒ sys.error("more than one listing")
-      //          json.convertTo[List[Listing]]
-      //      }
-
+      val listing = json.convertTo[Listing]
+      for {
+        child ← listing.data.children
+        link = child.data.asInstanceOf[Link]
+      } handleLink(link)
     }
 
     case GetLink(link_name) ⇒ {
@@ -391,29 +315,30 @@ class reddit extends Actor {
       val response = http.get(new URL(url))
       val body = response.body.asString
       val json = body.asJson
-      handleListing(link_name.some, json.convertTo[Listing].data)
+      val listing = json.convertTo[Listing]
+      for {
+        child ← listing.data.children
+        link = child.data.asInstanceOf[Link]
+      } handleLink(link)
     }
 
-    case GetComments(link_id) ⇒ {
-      val url = s"http://www.reddit.com/comments/$link_id.json"
+    case GetComments(link_id, depth, limit, comment_id, context) ⇒ {
+      val url = s"http://www.reddit.com/comments/$link_id.json?depth=$depth&limit=$limit&${comment_id.map(c ⇒ s"comment=$c").getOrElse("")}${context.map(c ⇒ s"context=$c").getOrElse("")}"
       val response = http.get(new URL(url))
       val body = response.body.asString
       val json = body.asJson
-      for (listing ← json.convertTo[List[Listing]]) handleListing(link_id.some, listing.data)
-    }
-
-    case GetMore(link_name, children) ⇒ {
-      assert(link_name.startsWith("t3_"))
-      val response = http.post(new URL("http://www.reddit.com/api/morechildren"), RequestBody(Map(
-        "link_id" → link_name, // wtf reddit !!!
-        "children" → children.mkString(",")
-      )).some)
-      println(s"*** ${response.status}")
-      val body = response.body.asString
-      val json = body.asJson
-      println(s"*** ${response.status} ${json.prettyPrint}")
-      for (child ← json.extract[List[Child]]('jquery / element(14) / element(3) / element(0)))
-        handleChild(link_name.some, child)
+      json.convertTo[List[Listing]] match {
+        case List(link, comments) ⇒
+          for {
+            child ← link.data.children
+            link = child.data.asInstanceOf[Link]
+          } handleLink(link)
+          for {
+            child ← comments.data.children
+            if child.data.isInstanceOf[Comment]
+            comment = child.data.asInstanceOf[Comment]
+          } handleComment(link_id, comment)
+      }
     }
 
   }

@@ -19,86 +19,71 @@ import org.neo4j.tooling.GlobalGraphOperations
 import collection.JavaConverters._
 import graph._
 
-import akka.contrib.throttle._, Throttler._
+import akka.contrib.throttle._
+import akka.contrib.throttle.Throttler._
 import scalaz._
 import Scalaz._
+
+import akka.actor.Actor
+import Console._
 
 object actors extends App {
 
   implicit val system = ActorSystem()
   implicit val ec     = system.dispatcher
 
-  val reddit           = {
-    val throttler = system.actorOf(Props(classOf[TimerBasedThrottler], 30 msgsPerMinute))
+  val redditActorRef           = {
+    val throttler = system.actorOf(Props(classOf[TimerBasedThrottler], 6 msgsPerMinute)) // limit is 30
     throttler ! SetTarget(system.actorOf(Props[reddit]).some)
     throttler
   }
-  val `new page actor` = system.actorOf(Props[NewPage])
-  val newLinkActor     = system.actorOf(Props[NewStory])
-  val newCommentActor  = system.actorOf(Props[NewComment])
 
-  reddit ! GetPage("frontpage", "http://www.reddit.com/.json")
-  reddit ! GetLink("t3_21r672")
-  reddit ! GetComments("21r672", 1, 10, none, none)
+  val log = LoggerFactory.getLogger("actors")
+  import log._
+
+  system.eventStream.subscribe(system.actorOf(Props(new Actor {
+    def receive = {
+      case reddit.NewPage(pageName) ⇒ tx {
+        tf: TF ⇒
+          val title = getNode("name", pageName).getProperty("name").asInstanceOf[String]
+          info(s"new page $YELLOW$title$RESET")
+      }
+    }
+  })), classOf[reddit.NewPage])
+
+  system.eventStream.subscribe(system.actorOf(Props(new Actor {
+    def receive = {
+      case reddit.NewLink(name) ⇒
+        tx {
+          tf: TF ⇒
+            val node = getNode("name", name)
+            val subreddit = node.getProperty("subreddit").asInstanceOf[String]
+            val title = node.getProperty("title").asInstanceOf[String]
+            val url = node.getProperty("url").asInstanceOf[String]
+            info(s"new link /r/$subreddit $YELLOW$title$RESET $url")
+        }
+    }
+  })), classOf[reddit.NewLink])
+
+  system.eventStream.subscribe(system.actorOf(Props(new Actor {
+    def receive = {
+      case reddit.NewComment(name) ⇒
+        tx {
+          tf: TF ⇒
+            val node = getNode("name", name)
+            val body = node.getProperty("body").asInstanceOf[String].replaceAll( """\n""", " ")
+            info(s"new comment $CYAN$body$RESET")
+        }
+    }
+  })), classOf[reddit.NewComment])
+
+  redditActorRef ! GetPage("frontpage", "http://www.reddit.com/.json")
+  redditActorRef ! GetLink("t3_21r672")
+  redditActorRef ! GetComments("21r672", 1, 10, none, none)
 
   system.registerOnTermination {
     println("bye!")
     graph.shutdown()
-  }
-}
-
-import actors._
-import akka.actor.Actor
-import Console._
-
-class NewPage extends Actor {
-
-  val log = LoggerFactory.getLogger(classOf[NewPage])
-
-  import log._
-
-  def receive = {
-    case pageName: String ⇒ tx {
-      tf: TF ⇒
-        val title = getNode("name", pageName).getProperty("name").asInstanceOf[String]
-        info(s"$YELLOW$title$RESET")
-    }
-  }
-}
-
-class NewStory extends Actor {
-
-  val log = LoggerFactory.getLogger(classOf[NewStory])
-
-  import log._
-
-  def receive = {
-    case storyName: String ⇒
-      tx {
-        tf: TF ⇒
-          val node = getNode("name", storyName)
-          val subreddit = node.getProperty("subreddit").asInstanceOf[String]
-          val title = node.getProperty("title").asInstanceOf[String]
-          val url = node.getProperty("url").asInstanceOf[String]
-          info(s"/r/$subreddit $YELLOW$title$RESET $url")
-      }
-  }
-}
-
-class NewComment extends Actor {
-
-  val log = LoggerFactory.getLogger(classOf[NewComment])
-
-  import log._
-
-  def receive = {
-    case name: String ⇒
-      tx {
-        tf: TF ⇒
-          val node = getNode("name", name)
-          val body = node.getProperty("body").asInstanceOf[String].replaceAll( """\n""", " ")
-          info(s"$CYAN$body$RESET")
-      }
   }
 }
 
@@ -258,7 +243,7 @@ class reddit extends Actor {
         node.setProperty("kind", "link")
         node.setProperty("name", link.name)
         tf += {
-          () ⇒ newLinkActor ! link.name
+          () ⇒ actors.system.eventStream.publish(reddit.NewLink(link.name))
         }
         node
       }
@@ -280,7 +265,7 @@ class reddit extends Actor {
         node.setProperty("kind", "comment")
         node.setProperty("name", comment.name)
         tf += {
-          () ⇒ newCommentActor ! comment.name
+          () ⇒ actors.system.eventStream.publish(reddit.NewComment(comment.name))
         }
         node
       }
@@ -343,4 +328,10 @@ class reddit extends Actor {
 
   }
 
+}
+
+object reddit {
+  case class NewPage(name: String)
+  case class NewLink(name: String)
+  case class NewComment(name: String)
 }

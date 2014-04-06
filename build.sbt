@@ -20,6 +20,7 @@ libraryDependencies ++= {
     "io.spray"                %   "spray-client"  % sprayV,
     "io.spray"                %   "spray-testkit" % sprayV  % "test",
     "io.spray"                %%  "spray-json"    % "1.2.5",
+    "net.virtual-void"        %%  "json-lenses"   % "0.5.4",
     "com.typesafe.akka"       %%  "akka-actor"    % akkaV,
     "com.typesafe.akka"       %%  "akka-contrib"  % akkaV,
     "com.typesafe.akka"       %%  "akka-testkit"  % akkaV   % "test",

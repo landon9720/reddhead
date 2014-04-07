@@ -10,6 +10,7 @@ import akka.actor.Actor
 import Console._
 import graph._
 import reddit._
+import scala.concurrent.duration._
 
 object actors extends App {
 
@@ -17,7 +18,7 @@ object actors extends App {
   implicit val ec     = system.dispatcher
 
   val redditActorRef           = {
-    val throttler = system.actorOf(Props(classOf[TimerBasedThrottler], 6 msgsPerMinute)) // limit is 30
+    val throttler = system.actorOf(Props(classOf[TimerBasedThrottler], Rate(1, 3 seconds))) // limit is 1 call per 2 sec
     throttler ! SetTarget(system.actorOf(Props[reddit]).some)
     throttler
   }
@@ -61,9 +62,9 @@ object actors extends App {
     }
   })), classOf[reddit.NewComment])
 
-  redditActorRef ! GetPage("frontpage", "http://www.reddit.com/.json")
-  redditActorRef ! GetLink("t3_21r672")
-  redditActorRef ! GetComments("21r672", 1, 10, none, none)
+//  redditActorRef ! GetPage("frontpage", "http://www.reddit.com/.json")
+//  redditActorRef ! GetLink("t3_21r672")
+  redditActorRef ! GetComments("21r672", 5, 500, none, none)
 
   system.registerOnTermination {
     println("bye!")

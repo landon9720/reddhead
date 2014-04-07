@@ -4,13 +4,8 @@ import collection.JavaConverters._
 import org.neo4j.tooling.GlobalGraphOperations
 import org.neo4j.graphdb.factory.GraphDatabaseFactory
 
-package object graph extends graph("name") {
+package object graph {
   type TF = collection.mutable.ListBuffer[() ⇒ Unit]
-}
-
-import graph._
-
-class graph(indexes: String*) {
 
   //  val `child relationship type` = DynamicRelationshipType.withName("child")
 
@@ -49,7 +44,7 @@ class graph(indexes: String*) {
   private val graph = {
     val g = new GraphDatabaseFactory().newEmbeddedDatabaseBuilder("data").newGraphDatabase
     g.index.getNodeAutoIndexer.setEnabled(true)
-    indexes.foreach(g.index.getNodeAutoIndexer.startAutoIndexingProperty)
+    g.index.getNodeAutoIndexer.startAutoIndexingProperty("name")
     g
   }
 

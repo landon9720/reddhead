@@ -8,6 +8,8 @@ import spray.json._
 import DefaultJsonProtocol._
 import kuhn._
 import graph._
+import scalaz._
+import Scalaz._
 
 // actor messages
 case class GetPage(name: String, url: String)
@@ -69,9 +71,12 @@ class reddit extends Actor {
               case Left(listing) ⇒ listing
             }
             child ← listing.data.children
-            if child.data.isInstanceOf[Comment]
-            comment = child.data.asInstanceOf[Comment]
-          } handleComment(link_id, comment)
+          } child.data match {
+            case comment: Comment ⇒ handleComment(link_id, comment)
+            case more: More ⇒ for (child ← more.children) {
+              actors.redditActorRef ! GetComments(link_id, 5, 500, child.some, 0.some)
+            }
+          }
       }
   }
 
@@ -101,9 +106,9 @@ class reddit extends Actor {
     }
 
     case GetComments(link_id, depth, limit, comment_id, context) ⇒ {
-      val url = s"http://www.reddit.com/comments/$link_id.json?depth=$depth&limit=$limit&${
-        comment_id.map(c ⇒ s"comment=$c").getOrElse("")
-      }${context.map(c ⇒ s"context=$c").getOrElse("")}"
+      var url = s"http://www.reddit.com/comments/$link_id.json?depth=$depth&limit=$limit"
+      comment_id.map(c ⇒ url += s"&comment=$c")
+      context.map(c ⇒ url += s"&context=$c")
       val response = http.get(new URL(url))
       val body = response.body.asString
       val json = body.asJson

@@ -1,6 +1,6 @@
 organization  := "kuhn"
 
-version       := "0.1"
+version       := "0.2"
 
 scalaVersion  := "2.10.3"
 
@@ -33,5 +33,7 @@ libraryDependencies ++= {
     "org.neo4j"               %   "neo4j"         % "2.0.0"
   )
 }
+
+initialCommands := "import kuhn._, graph._, reddit._"
 
 Revolver.settings

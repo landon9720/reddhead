@@ -1,9 +1,9 @@
 package kuhn
 
 import org.codehaus.jackson.JsonNode
-import spray.client.HttpConduit._
 import concurrent._
 import concurrent.duration._
+import spray.client.pipelining.Get
 
 // abstraction over Reddit's REST API, documented here:
 // http://www.reddit.com/dev/api
@@ -41,7 +41,7 @@ object api {
 	}
 
 	def request(q:Query) = {
-		pipeline(Get(q.url) ~> addHeader("User-Agent", "https://github.com/landon9720/reddhead"))
+		pipeline(Get(q.url))
 	}
 
 	def scroll(q:Query, factory:JsonNode=>Listing = new Listing(_))(f:PartialFunction[Thing, Boolean]) {
